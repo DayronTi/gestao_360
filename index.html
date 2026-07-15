@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão à Vista 360 · Central de Chamados</title>
+    <!-- Importa o arquivo de estilos externo -->
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div>
+    <p class="brand-eyebrow">Grupo Logos · Central de Chamados</p>
+    <h1>Gestão à Vista 360</h1>
+    <p class="subtitle">Chamados de 2026 — status Em atendimento, Pendente, Solucionado e Fechado</p>
+  </div>
+  <div class="board-clock">
+    <div class="big" id="clock">--:--</div>
+    <div class="small" id="dateline">carregando</div>
+  </div>
+</header>
+
+<div class="hint">💡 <span><b>Clique</b> num indicador ou numa categoria para filtrar a lista abaixo. <b>Clique num chamado</b> para ver todos os detalhes.</span></div>
+<div class="hint" id="dados-atualizados" style="color:var(--amber); border-color:var(--amber); display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
+  <span id="dados-atualizados-texto">Carregando...</span>
+  <span style="display:flex; align-items:center; gap:8px;">
+    <input type="file" id="input-csv" accept=".csv" style="display:none;">
+    <button id="btn-escolher-csv" style="background:var(--panel-2); border:1px solid var(--amber); color:var(--amber); font-family:var(--mono); font-size:11px; padding:6px 14px; border-radius:20px; cursor:pointer; white-space:nowrap;">Atualizar planilha (CSV)</button>
+  </span>
+</div>
+
+<div class="kpi-strip">
+  <div class="kpi total" data-status="__all__">
+    <div class="label">Total (2026) <span class="tap">clique p/ ver</span></div>
+    <div class="value" id="kpi-total">0</div>
+  </div>
+  <div class="kpi atend" data-status="Em atendimento (atribuído)">
+    <div class="label">Em atendimento <span class="tap">clique p/ ver</span></div>
+    <div class="value" id="kpi-atend">0</div>
+  </div>
+  <div class="kpi pend" data-status="Pendente">
+    <div class="label">Pendente <span class="tap">clique p/ ver</span></div>
+    <div class="value" id="kpi-pend">0</div>
+  </div>
+  <div class="kpi solved" data-status="Solucionado">
+    <div class="label">Solucionado <span class="tap">clique p/ ver</span></div>
+    <div class="value" id="kpi-solved">0</div>
+  </div>
+  <div class="kpi closed" data-status="Fechado">
+    <div class="label">Fechado <span class="tap">clique p/ ver</span></div>
+    <div class="value" id="kpi-closed">0</div>
+  </div>
+</div>
+
+<div class="hint" style="border-color:var(--st-solved); color:#a9dcc0; margin-top:14px;">
+  Para chamados já Solucionados/Fechados, o SLA compara o prazo com a data real de fechamento (não com hoje) — mostra se foi resolvido no prazo ou com atraso. Para chamados ainda em atendimento/pendentes, compara com a data de hoje.
+</div>
+
+<div class="sla-strip">
+  <div class="sla-kpi ok" data-sla="ok">
+    <div class="label">No prazo</div>
+    <div class="value" id="sla-ok">0</div>
+  </div>
+  <div class="sla-kpi warn" data-sla="warn">
+    <div class="label">Quase vencendo (≤48h)</div>
+    <div class="value" id="sla-warn">0</div>
+  </div>
+  <div class="sla-kpi crit" data-sla="crit">
+    <div class="label">Vencido</div>
+    <div class="value" id="sla-crit">0</div>
+  </div>
+  <div class="sla-kpi paused" data-sla="paused">
+    <div class="label">Pausado (aguardando)</div>
+    <div class="value" id="sla-paused">0</div>
+  </div>
+</div>
+
+<div class="atrib-mes-row">
+  <div class="sla-kpi crit" id="kpi-sem-tecnico-card" style="max-width:280px;">
+    <div class="label">Sem técnico atribuído <span class="tap">clique p/ ver</span></div>
+    <div class="value" id="kpi-sem-tecnico">0</div>
+  </div>
+  <div class="mes-picker">
+    <label for="filtro-mes">Ver o mês:</label>
+    <select id="filtro-mes"><option value="">Todos os meses de 2026</option></select>
+  </div>
+</div>
+
+<div class="category-grid" id="category-grid"></div>
+
+<div class="filter-bar" id="filter-bar">
+  <span>Filtrando por:</span>
+  <span class="chip" id="chip-cat" style="display:none"></span>
+  <span class="chip" id="chip-status" style="display:none"></span>
+  <span class="chip" id="chip-sla" style="display:none"></span>
+  <span class="chip" id="chip-atrib" style="display:none"></span>
+  <button id="clear-filters">Limpar filtro ✕</button>
+</div>
+
+<div class="view-tabs">
+  <button class="on" data-view="categoria">Por categoria</button>
+  <button data-view="unidade">Por unidade</button>
+  <button data-view="tecnico">Fila por técnico</button>
+</div>
+
+<div class="view on" id="view-categoria">
+  <div id="sections"></div>
+</div>
+
+<div class="view" id="view-unidade">
+  <div class="category-grid" id="unidade-cards"></div>
+  <div id="unidade-sections" style="margin-top:22px;"></div>
+</div>
+
+<div class="view" id="view-tecnico">
+  <div class="queue-legend">
+    <span><i style="background:var(--st-pend)"></i>Prioridade Alta</span>
+    <span><i style="background:var(--st-atend)"></i>Prioridade Média</span>
+    <span><i style="background:var(--compras)"></i>Prioridade Baixa</span>
+    <span style="margin-left:auto">Ordem: prioridade → mais tempo em aberto primeiro</span>
+  </div>
+  <div class="queue-grid" id="queue-grid"></div>
+
+  <div class="section-head" style="margin-top:30px;">
+    <h2 style="color:var(--st-pend)"><span class="dot" style="background:var(--st-pend)"></span>Sem técnico — precisa de atribuição</h2>
+    <span class="section-count">agrupado por filial, com o técnico que historicamente atende cada uma</span>
+  </div>
+  <div class="queue-grid" id="unassigned-grid"></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <button class="close" id="modal-close">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<footer>
+  <span>Fonte: exportação GLPI (glpi.csv)</span>
+  <span>Clique nos cabeçalhos da tabela para ordenar</span>
+</footer>
+
+<!-- Importa os scripts externos -->
+<script src="assets/app.js"></script>
+</body>
+</html>
