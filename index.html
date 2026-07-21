@@ -25,8 +25,9 @@
 <div class="hint" id="dados-atualizados" style="color:var(--amber); border-color:var(--amber); display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
   <span id="dados-atualizados-texto">Carregando...</span>
   <span style="display:flex; align-items:center; gap:8px;">
-    <input type="file" id="input-csv" accept=".csv" style="display:none;">
-    <button id="btn-escolher-csv" style="background:var(--panel-2); border:1px solid var(--amber); color:var(--amber); font-family:var(--mono); font-size:11px; padding:6px 14px; border-radius:20px; cursor:pointer; white-space:nowrap;">Atualizar planilha (CSV)</button>
+  </span>
+  <span id="dados-sync-texto">
+      Sincronizando...
   </span>
 </div>
 
@@ -137,11 +138,11 @@
 </div>
 
 <footer>
-  <span>Fonte: exportação GLPI (glpi.csv)</span>
+  <span>Fonte: API GLPI</span>
   <span>Clique nos cabeçalhos da tabela para ordenar</span>
 </footer>
 
 <!-- Importa os scripts externos -->
-<script src="assets/app.js"></script>
+<script type="module" src="assets/app.js"></script>
 </body>
 </html>
