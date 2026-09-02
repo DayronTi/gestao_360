@@ -13,7 +13,7 @@
   <div>
     <p class="brand-eyebrow">Grupo Logos · Central de Chamados</p>
     <h1>Gestão à Vista 360</h1>
-    <p class="subtitle">Chamados de 2026 — status Em atendimento, Pendente, Solucionado e Fechado</p>
+    <p class="subtitle">Chamados de 2026 — setores Financeiro, CSC e Manutenção</p>
   </div>
   <div class="board-clock">
     <div class="big" id="clock">--:--</div>
@@ -86,6 +86,10 @@
     <label for="filtro-mes">Ver o mês:</label>
     <select id="filtro-mes"><option value="">Todos os meses de 2026</option></select>
   </div>
+  <div class="mes-picker">
+    <label for="filtro-tecnico">Técnico:</label>
+    <select id="filtro-tecnico"><option value="">Todos os técnicos</option></select>
+  </div>
 </div>
 
 <div class="category-grid" id="category-grid"></div>
@@ -96,12 +100,13 @@
   <span class="chip" id="chip-status" style="display:none"></span>
   <span class="chip" id="chip-sla" style="display:none"></span>
   <span class="chip" id="chip-atrib" style="display:none"></span>
+  <span class="chip" id="chip-tec" style="display:none"></span>
   <button id="clear-filters">Limpar filtro ✕</button>
 </div>
 
 <div class="view-tabs">
   <button class="on" data-view="categoria">Por categoria</button>
-  <button data-view="unidade">Por unidade</button>
+  <button data-view="unidade">Por setor</button>
   <button data-view="tecnico">Fila por técnico</button>
 </div>
 
@@ -125,7 +130,7 @@
 
   <div class="section-head" style="margin-top:30px;">
     <h2 style="color:var(--st-pend)"><span class="dot" style="background:var(--st-pend)"></span>Sem técnico — precisa de atribuição</h2>
-    <span class="section-count">agrupado por filial, com o técnico que historicamente atende cada uma</span>
+    <span class="section-count">agrupado por setor</span>
   </div>
   <div class="queue-grid" id="unassigned-grid"></div>
 </div>

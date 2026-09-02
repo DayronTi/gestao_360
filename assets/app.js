@@ -6,39 +6,33 @@ const API_BASE = 'http://10.33.29.109:5000';
 // ----------------------------------------------------------------------
 // REGRAS DE NEGÓCIO
 // ----------------------------------------------------------------------
+// A CATEGORIZAÇÃO POR SETOR agora vem PRONTA da API (campo `setor`, derivado
+// da Categoria ITIL do GLPI). O frontend não adivinha mais pelo título.
+// Escopo do painel (definido na API): FINANCEIRO + CSC + MANUTENÇÃO.
 const REGRAS = {
-  status_considerados: ['Em atendimento (atribuído)', 'Pendente', 'Solucionado', 'Fechado'],
-  ano_considerado: 2026,
-  categorias: [
-    { nome: 'Viagens Corporativas', palavras_chave: ['DESLOCAMENTO', 'HOSPEDAGEM', 'PASSAGEM'] },
-    { nome: 'VExpenses', palavras_chave: ['VEXPENSES'] },
-    { nome: 'Frotas', palavras_chave: ['FROTA', 'RENOVAÇÃO DE SEGURO'] },
-    { nome: 'Manutenção', palavras_chave: ['MANUTENÇÃO', 'PROBLEMA ELÉTRICO', 'EQUIPAMENTOS', 'COMBUSTÍVEL', 'OFICINA', 'EXAME'] },
+  status_considerados: [
+    'Em atendimento (atribuído)',
+    'Em atendimento (planejado)',
+    'Pendente',
+    'Solucionado',
+    'Fechado',
   ],
-  categoria_padrao: 'Compras',
+  ano_considerado: 2026,
 };
 
-const MAPA_STATUS_GLPI = { 1: 'Novo', 2: 'Em atendimento (atribuído)', 3: 'Pendente', 4: 'Pendente', 5: 'Solucionado', 6: 'Fechado' };
-
-// IDs -> nomes de técnico. Preencha conforme for descobrindo quem é cada ID no GLPI.
-const MAPA_TECNICOS = {
-  '148': 'Técnico 148',
-  '138': 'Técnico 138',
-  '2581': 'Técnico 2581',
-  '2586': 'Suporte Central',
+// Cores por setor (as chaves batem com o campo `setor` vindo da API).
+const SETOR_COLOR = {
+  'FINANCEIRO': 'var(--frotas)',
+  'CSC': 'var(--compras)',
+  'MANUTENÇÃO': 'var(--manutencao)',
+  'OUTROS': 'var(--amber)',
 };
-
-const CAT_COLOR = {
-  'Viagens Corporativas': 'var(--viagens)',
-  'VExpenses': 'var(--vexpenses)',
-  'Frotas': 'var(--frotas)',
-  'Manutenção': 'var(--manutencao)',
-  'Compras': 'var(--compras)',
-};
+const SETOR_ORDEM = ['CSC', 'FINANCEIRO', 'MANUTENÇÃO', 'OUTROS'];
 
 const STATUS_CLASS = {
   'Novo': 'st-Novo',
   'Em atendimento (atribuído)': 'st-Em-atendimento',
+  'Em atendimento (planejado)': 'st-Em-atendimento',
   'Pendente': 'st-Pendente',
   'Solucionado': 'st-Solucionado',
   'Fechado': 'st-Fechado',
@@ -46,6 +40,7 @@ const STATUS_CLASS = {
 const STATUS_LABEL = {
   'Novo': 'Novo',
   'Em atendimento (atribuído)': 'Em atendimento',
+  'Em atendimento (planejado)': 'Em atend. (plan.)',
   'Pendente': 'Pendente',
   'Solucionado': 'Solucionado',
   'Fechado': 'Fechado',
@@ -53,19 +48,22 @@ const STATUS_LABEL = {
 const STATUS_COLOR = {
   'Novo': 'var(--st-novo)',
   'Em atendimento (atribuído)': 'var(--st-atend)',
+  'Em atendimento (planejado)': 'var(--st-atend)',
   'Pendente': 'var(--st-pend)',
   'Solucionado': 'var(--st-solved)',
   'Fechado': 'var(--st-novo)',
 };
-// Chamados "Novo" já são descartados por REGRAS.status_considerados; entre os que restam,
-// só os ainda em andamento fazem sentido entrar na fila de "sem técnico".
-const STATUS_PRECISA_ATRIBUICAO = ['Em atendimento (atribuído)', 'Pendente'];
+// Status que ainda demandam ação -> podem entrar na fila de "sem técnico".
+const STATUS_PRECISA_ATRIBUICAO = [
+  'Em atendimento (atribuído)',
+  'Em atendimento (planejado)',
+  'Pendente',
+];
 
 const PRIO_WEIGHT = { Alta: 3, Média: 2, Baixa: 1 };
 const PRIO_COLOR = { Alta: 'var(--st-pend)', Média: 'var(--st-atend)', Baixa: 'var(--compras)' };
 const SLA_LABEL = { ok: 'No prazo', warn: 'Quase vencendo', crit: 'Vencido', paused: 'Pausado' };
 
-// Histórico de qual técnico costuma atender cada filial (opcional, preencha se quiser a dica na fila).
 const BRANCH_SUGGESTION = {};
 
 const NOMES_MES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -77,31 +75,24 @@ let TICKETS_BASE = [];   // já filtrado por REGRAS.status_considerados
 let TICKETS = [];        // TICKETS_BASE após filtro de mês
 let mesSelecionado = '';
 let activeStatus = null;
-let activeCategoria = null;
+let activeSetor = null;
 let activeSla = null;
 let activeAtribuicao = null;
+let activeTecnico = null;
 let sortField = null;
 let sortDir = 1;
 
 // ----------------------------------------------------------------------
 // MAPEAMENTO / HELPERS DE DADOS
 // ----------------------------------------------------------------------
-function categorizarTitulo(titulo) {
-  const t = (titulo || '').toUpperCase();
-  for (const cat of REGRAS.categorias) {
-    for (const palavra of cat.palavras_chave) {
-      if (t.includes(palavra)) return cat.nome;
-    }
-  }
-  return REGRAS.categoria_padrao;
-}
 
-// Escala GLPI vai de 1 (muito baixa) a 6 (crítica); o painel só distingue 3 faixas.
-function prioridadeLabel(valor) {
-  const n = Number(valor);
-  if (n >= 4) return 'Alta';
-  if (n === 3) return 'Média';
-  return 'Baixa';
+// GLPI: 1 muito baixa · 2 baixa · 3 média · 4 alta · 5 muito alta · 6 crítica.
+// O painel só distingue 3 faixas visuais.
+function bucketPrioridade(label) {
+  const l = String(label || '').toLowerCase();
+  if (l.includes('alta') || l.includes('crít') || l.includes('crit')) return 'Alta';
+  if (l.includes('baixa')) return 'Baixa';
+  return 'Média';
 }
 
 function converterData(dataStr) {
@@ -124,21 +115,23 @@ function parseDataHora(str) {
 
 function mapearChamados(chamadosBrutos) {
   return chamadosBrutos.map(ch => {
-    const tecBruto = ch['Atribuído - Técnico'];
-    let listaTecnicos = [];
-    if (tecBruto) listaTecnicos = Array.isArray(tecBruto) ? tecBruto.map(String) : [String(tecBruto)];
-
-    const assuntoLimpo = ch['titulo_bruto'] ? ch['titulo_bruto'].replace(/\t/g, ' ').trim() : 'Sem Assunto';
+    const tecnicos = Array.isArray(ch['tecnicos']) ? ch['tecnicos'] : [];
+    const requerentes = Array.isArray(ch['requerente_nomes']) ? ch['requerente_nomes'] : [];
+    const assuntoLimpo = ch['titulo_bruto'] ? String(ch['titulo_bruto']).replace(/\t/g, ' ').trim() : 'Sem Assunto';
 
     return {
       id: String(ch['ID']),
       assunto: assuntoLimpo,
-      solicitante: ch['Requerente - Requerente'] ? `ID: ${ch['Requerente - Requerente']}` : 'Sistema',
-      entidade: ch['Entidade'] ? ch['Entidade'].split('>').pop().trim() : 'LOGOS - MATRIZ',
-      prioridade: prioridadeLabel(ch['Prioridade']),
-      status: MAPA_STATUS_GLPI[ch['Status']] || 'Pendente',
-      categoria: categorizarTitulo(assuntoLimpo),
-      tecnicos: listaTecnicos,
+      solicitante: requerentes[0] || 'Sistema',
+      entidade: ch['Entidade'] ? String(ch['Entidade']).split('>').pop().trim() : 'LOGOS - MATRIZ',
+      setor: ch['setor'] || 'OUTROS',
+      categoria: ch['categoria_completename'] || '(sem categoria)',
+      categoriaId: ch['categoria_id'] != null ? String(ch['categoria_id']) : (ch['categoria_completename'] || 's/cat'),
+      prioridade: bucketPrioridade(ch['prioridade_label']),
+      prioridadeLabel: ch['prioridade_label'] || 'Não definida',
+      status: ch['status_label'] || 'Desconhecido',
+      tecnicos: tecnicos.map(t => t && t.nome ? t.nome : String(t)),
+      tecnicosIds: (ch['tecnicos_ids'] || []).map(String),
       prazo: converterData(ch['Tempo para solução + Progresso']),
       fechamento: converterData(ch['Data de fechamento']),
       abertura: converterData(ch['Data de abertura']),
@@ -159,7 +152,6 @@ function fmtDias(dias) {
   return `${dias} dia${dias === 1 ? '' : 's'}`;
 }
 
-// Limiares de "fila envelhecendo" ainda não vieram de negócio; ajuste se tiver uma meta oficial.
 function agePillClass(dias) {
   if (dias >= 7) return 'crit';
   if (dias >= 3) return 'warn';
@@ -198,6 +190,12 @@ function contarPor(lista, campoFn) {
   return mapa;
 }
 
+function setoresPresentes() {
+  const presentes = [...new Set(TICKETS.map(t => t.setor))];
+  return SETOR_ORDEM.filter(s => presentes.includes(s))
+    .concat(presentes.filter(s => !SETOR_ORDEM.includes(s)));
+}
+
 function sortTickets(items) {
   const arr = items.slice();
   if (!sortField) {
@@ -228,7 +226,11 @@ function sortTickets(items) {
 function filteredTickets() {
   return TICKETS.filter(t => {
     if (activeStatus && t.status !== activeStatus) return false;
-    if (activeCategoria && t.categoria !== activeCategoria) return false;
+    if (activeSetor && t.setor !== activeSetor) return false;
+    if (activeTecnico) {
+      if (activeTecnico === '__sem__') { if (t.tecnicos.length) return false; }
+      else if (!t.tecnicos.includes(activeTecnico)) return false;
+    }
     if (activeSla) {
       const info = slaInfo(t);
       if (!info.cls || info.cls !== activeSla) return false;
@@ -241,13 +243,15 @@ function filteredTickets() {
 }
 
 // ----------------------------------------------------------------------
-// RENDER: KPIs, SLA, categorias, unidades, tabela principal
+// RENDER: KPIs, SLA, setores, tabela principal
 // ----------------------------------------------------------------------
+function ehEmAtendimento(st) { return st === 'Em atendimento (atribuído)' || st === 'Em atendimento (planejado)'; }
+
 function renderKpiNumbers() {
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
   setText('kpi-total', TICKETS.length);
-  setText('kpi-atend', TICKETS.filter(t => t.status === 'Em atendimento (atribuído)').length);
+  setText('kpi-atend', TICKETS.filter(t => ehEmAtendimento(t.status)).length);
   setText('kpi-pend', TICKETS.filter(t => t.status === 'Pendente').length);
   setText('kpi-solved', TICKETS.filter(t => t.status === 'Solucionado').length);
   setText('kpi-closed', TICKETS.filter(t => t.status === 'Fechado').length);
@@ -266,22 +270,24 @@ function renderKpiNumbers() {
 function renderCategoryCards() {
   const root = document.getElementById('category-grid');
   if (!root) return;
-  const nomes = [...new Set(REGRAS.categorias.map(c => c.nome).concat([REGRAS.categoria_padrao]))];
   const statusList = Object.keys(STATUS_COLOR).filter(s => REGRAS.status_considerados.includes(s));
 
-  root.innerHTML = nomes.map(nome => {
-    const items = TICKETS.filter(t => t.categoria === nome);
-    const cor = CAT_COLOR[nome] || 'var(--compras)';
+  root.innerHTML = setoresPresentes().map(nome => {
+    const items = TICKETS.filter(t => t.setor === nome);
+    const cor = SETOR_COLOR[nome] || 'var(--amber)';
     const total = items.length || 1;
     const bars = statusList.map(st => {
       const n = items.filter(t => t.status === st).length;
       if (!n) return '';
       return `<span style="width:${(n / total * 100).toFixed(1)}%; background:${STATUS_COLOR[st]}"></span>`;
     }).join('');
-    const legenda = statusList.map(st => `<span><b>${items.filter(t => t.status === st).length}</b> ${STATUS_LABEL[st]}</span>`).join('');
+    const legenda = statusList
+      .filter(st => items.some(t => t.status === st))
+      .map(st => `<span><b>${items.filter(t => t.status === st).length}</b> ${STATUS_LABEL[st]}</span>`)
+      .join('');
 
     return `
-      <div class="cat-card" data-cat="${nome}" style="--cat-color:${cor}">
+      <div class="cat-card" data-setor="${nome}" style="--cat-color:${cor}">
         <div class="cat-name"><span class="dot"></span>${nome}</div>
         <div class="flap">${items.length}</div>
         <div class="mini-bars">${bars}</div>
@@ -290,17 +296,19 @@ function renderCategoryCards() {
   }).join('');
 }
 
-function renderUnidadeCards() {
+function renderSetorCards() {
   const root = document.getElementById('unidade-cards');
   if (!root) return;
-  const porUnidade = contarPor(TICKETS, t => t.entidade);
-  const nomes = Object.keys(porUnidade).sort((a, b) => porUnidade[b].length - porUnidade[a].length);
+  const filtrados = filteredTickets();
+  const porSetor = contarPor(filtrados, t => t.setor);
+  const nomes = Object.keys(porSetor).sort((a, b) => porSetor[b].length - porSetor[a].length);
 
   root.innerHTML = nomes.map(nome => {
-    const items = porUnidade[nome];
+    const items = porSetor[nome];
     const semTecnico = items.filter(t => STATUS_PRECISA_ATRIBUICAO.includes(t.status) && t.tecnicos.length === 0).length;
+    const cor = SETOR_COLOR[nome] || 'var(--amber)';
     return `
-      <div class="cat-card" style="--cat-color:var(--amber)">
+      <div class="cat-card" style="--cat-color:${cor}">
         <div class="cat-name"><span class="dot"></span>${nome}</div>
         <div class="flap">${items.length}</div>
         <div class="cat-legend"><span><b>${semTecnico}</b> sem técnico</span></div>
@@ -311,12 +319,12 @@ function renderUnidadeCards() {
 function buildTicketsTableHtml(items) {
   const sorted = sortTickets(items);
   const rows = sorted.map(t => {
-    const tecNomes = t.tecnicos.length ? t.tecnicos.map(id => MAPA_TECNICOS[id] || `ID: ${id}`).join(', ') : '—';
+    const tecNomes = t.tecnicos.length ? t.tecnicos.join(', ') : '—';
     return `
       <tr data-id="${t.id}">
         <td class="id">#${t.id}</td>
-        <td class="assunto">${t.assunto}<small>${t.solicitante} · ${t.entidade}</small></td>
-        <td><span class="badge ${STATUS_CLASS[t.status]}">${STATUS_LABEL[t.status]}</span></td>
+        <td class="assunto">${t.assunto}<small>${t.solicitante} · ${t.categoria}</small></td>
+        <td><span class="badge ${STATUS_CLASS[t.status] || ''}">${STATUS_LABEL[t.status] || t.status}</span></td>
         <td><span class="prio prio-${t.prioridade}">${t.prioridade}</span></td>
         <td>${tecNomes}</td>
         <td>${fmtDias(diasAberto(t))}</td>
@@ -339,23 +347,24 @@ function buildTicketsTableHtml(items) {
     </table>`;
 }
 
+// Visão principal: agrupada por CATEGORIA (completename da Categoria ITIL).
 function render() {
   const root = document.getElementById('sections');
   if (!root) return;
   const filtrados = filteredTickets();
-  const nomes = activeCategoria
-    ? [activeCategoria]
-    : [...new Set(REGRAS.categorias.map(c => c.nome).concat([REGRAS.categoria_padrao]))];
+
+  const porCategoria = contarPor(filtrados, t => t.categoria);
+  const nomes = Object.keys(porCategoria).sort((a, b) => porCategoria[b].length - porCategoria[a].length);
 
   const html = nomes.map(nome => {
-    const items = filtrados.filter(t => t.categoria === nome);
-    if (!items.length && !activeCategoria) return '';
-    const cor = CAT_COLOR[nome] || 'var(--compras)';
+    const items = porCategoria[nome];
+    const setor = items[0] ? items[0].setor : 'OUTROS';
+    const cor = SETOR_COLOR[setor] || 'var(--amber)';
     return `
       <div class="section">
         <div class="section-head">
           <h2 style="color:${cor}"><span class="dot" style="background:${cor}"></span>${nome}</h2>
-          <span class="section-count">${items.length} chamado${items.length === 1 ? '' : 's'}</span>
+          <span class="section-count">${setor} · ${items.length} chamado${items.length === 1 ? '' : 's'}</span>
         </div>
         ${buildTicketsTableHtml(items)}
       </div>`;
@@ -364,19 +373,21 @@ function render() {
   root.innerHTML = html || `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado encontrado com esse filtro</div>`;
 }
 
-function renderUnidadeSection() {
+// Aba "Por setor": agrupada por FINANCEIRO / CSC / MANUTENÇÃO.
+function renderSetorSection() {
   const root = document.getElementById('unidade-sections');
   if (!root) return;
   const filtrados = filteredTickets();
-  const porUnidade = contarPor(filtrados, t => t.entidade);
-  const nomes = Object.keys(porUnidade).sort((a, b) => porUnidade[b].length - porUnidade[a].length);
+  const porSetor = contarPor(filtrados, t => t.setor);
+  const nomes = Object.keys(porSetor).sort((a, b) => porSetor[b].length - porSetor[a].length);
 
   root.innerHTML = nomes.map(nome => {
-    const items = porUnidade[nome];
+    const items = porSetor[nome];
+    const cor = SETOR_COLOR[nome] || 'var(--amber)';
     return `
       <div class="section">
         <div class="section-head">
-          <h2 style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span>${nome}</h2>
+          <h2 style="color:${cor}"><span class="dot" style="background:${cor}"></span>${nome}</h2>
           <span class="section-count">${items.length} chamado${items.length === 1 ? '' : 's'}</span>
         </div>
         ${buildTicketsTableHtml(items)}
@@ -390,8 +401,7 @@ function renderUnidadeSection() {
 function buildQueues() {
   const map = {};
   TICKETS.forEach(t => {
-    const tecnicosNomes = t.tecnicos.map(id => MAPA_TECNICOS[id] || `ID: ${id}`);
-    const people = tecnicosNomes.length ? tecnicosNomes : (STATUS_PRECISA_ATRIBUICAO.includes(t.status) ? ['Não atribuído'] : []);
+    const people = t.tecnicos.length ? t.tecnicos : (STATUS_PRECISA_ATRIBUICAO.includes(t.status) ? ['Não atribuído'] : []);
     people.forEach(p => {
       if (!map[p]) map[p] = [];
       map[p].push(t);
@@ -466,7 +476,7 @@ function buildQueueItem(t, i) {
     </div>
     <div class="assunto">${t.assunto}<small>${t.solicitante || ''}</small></div>
     <div class="row2">
-      <span class="badge ${STATUS_CLASS[t.status]}">${STATUS_LABEL[t.status]}</span>
+      <span class="badge ${STATUS_CLASS[t.status] || ''}">${STATUS_LABEL[t.status] || t.status}</span>
       <span class="prio prio-${t.prioridade}">${t.prioridade}</span>
       <span class="age-pill ${agePillClass(dias)}">aberto há ${fmtDias(dias)}</span>
       <span class="cat-tag">${t.categoria}</span>
@@ -488,7 +498,7 @@ function renderUnassignedByBranch(items) {
     return;
   }
 
-  const byBranch = contarPor(items, t => t.entidade);
+  const byBranch = contarPor(items, t => t.setor);
   Object.values(byBranch).forEach(arr => {
     arr.sort((a, b) => {
       const wa = PRIO_WEIGHT[a.prioridade] || 0;
@@ -511,7 +521,7 @@ function renderUnassignedByBranch(items) {
     head.className = 'branch-group-head';
     head.innerHTML = `
       <span><b>${branch}</b> · ${arr.length} chamado${arr.length === 1 ? '' : 's'}</span>
-      <span>${sugestao ? 'quem atende essa filial: <span class="sug">' + sugestao + '</span>' : 'sem histórico de técnico'}</span>
+      <span>${sugestao ? 'quem atende: <span class="sug">' + sugestao + '</span>' : 'setor'}</span>
     `;
     col.appendChild(head);
 
@@ -530,16 +540,16 @@ function openModal(t) {
   const body = document.getElementById('modal-body');
   const overlay = document.getElementById('overlay');
   if (!body || !overlay) return;
-  const tecNomes = t.tecnicos.length ? t.tecnicos.map(id => MAPA_TECNICOS[id] || `ID: ${id}`).join(', ') : 'Não atribuído';
+  const tecNomes = t.tecnicos.length ? t.tecnicos.join(', ') : 'Não atribuído';
 
   body.innerHTML = `
     <div class="m-id">CHAMADO #${t.id}</div>
     <h3>${t.assunto}</h3>
     <div class="grid">
-      <div class="field"><div class="k">Status</div><div class="v"><span class="badge ${STATUS_CLASS[t.status]}">${STATUS_LABEL[t.status]}</span></div></div>
-      <div class="field"><div class="k">Prioridade</div><div class="v"><span class="prio prio-${t.prioridade}">${t.prioridade}</span></div></div>
+      <div class="field"><div class="k">Status</div><div class="v"><span class="badge ${STATUS_CLASS[t.status] || ''}">${STATUS_LABEL[t.status] || t.status}</span></div></div>
+      <div class="field"><div class="k">Prioridade</div><div class="v"><span class="prio prio-${t.prioridade}">${t.prioridadeLabel}</span></div></div>
+      <div class="field"><div class="k">Setor</div><div class="v">${t.setor}</div></div>
       <div class="field"><div class="k">Categoria</div><div class="v">${t.categoria}</div></div>
-      <div class="field"><div class="k">Unidade</div><div class="v">${t.entidade}</div></div>
       <div class="field"><div class="k">Solicitante</div><div class="v">${t.solicitante || '—'}</div></div>
       <div class="field"><div class="k">Técnico</div><div class="v">${tecNomes}</div></div>
       <div class="field"><div class="k">Abertura</div><div class="v">${t.abertura || '—'}</div></div>
@@ -556,7 +566,7 @@ function closeModal() {
 }
 
 // ----------------------------------------------------------------------
-// FILTRO DE MÊS / FILTRO ATIVO (chips)
+// FILTRO DE MÊS / TÉCNICO / FILTRO ATIVO (chips)
 // ----------------------------------------------------------------------
 function popularSeletorMes() {
   const select = document.getElementById('filtro-mes');
@@ -568,6 +578,17 @@ function popularSeletorMes() {
   select.value = mesesPresentes.includes(valorAtual) ? valorAtual : '';
 }
 
+function popularSeletorTecnico() {
+  const select = document.getElementById('filtro-tecnico');
+  if (!select) return;
+  const nomes = [...new Set(TICKETS_BASE.flatMap(t => t.tecnicos))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const valorAtual = select.value;
+  select.innerHTML = `<option value="">Todos os técnicos</option>` +
+    `<option value="__sem__">— Sem técnico atribuído —</option>` +
+    nomes.map(n => `<option value="${n}">${n}</option>`).join('');
+  select.value = (valorAtual === '__sem__' || nomes.includes(valorAtual)) ? valorAtual : '';
+}
+
 function aplicarFiltroMes() {
   TICKETS = mesSelecionado ? TICKETS_BASE.filter(t => mesDaAbertura(t.abertura) === mesSelecionado) : TICKETS_BASE;
   initAll();
@@ -575,7 +596,7 @@ function aplicarFiltroMes() {
   const subtitulo = document.querySelector('.subtitle');
   if (subtitulo) {
     const rotuloMes = mesSelecionado ? `${NOMES_MES[parseInt(mesSelecionado, 10) - 1]}/${REGRAS.ano_considerado}` : REGRAS.ano_considerado;
-    subtitulo.textContent = `Chamados de ${rotuloMes} — status Em atendimento, Pendente, Solucionado e Fechado`;
+    subtitulo.textContent = `Chamados de ${rotuloMes} — setores Financeiro, CSC e Manutenção`;
   }
 }
 
@@ -588,21 +609,21 @@ function updateActiveClasses() {
     el.classList.toggle('active', activeSla === el.dataset.sla);
   });
   document.getElementById('kpi-sem-tecnico-card')?.classList.toggle('active', activeAtribuicao === 'sem_tecnico');
-  document.querySelectorAll('.cat-card[data-cat]').forEach(el => {
-    el.classList.toggle('active', activeCategoria === el.dataset.cat);
+  document.querySelectorAll('.cat-card[data-setor]').forEach(el => {
+    el.classList.toggle('active', activeSetor === el.dataset.setor);
   });
 }
 
 function updateFilterBar() {
   const bar = document.getElementById('filter-bar');
-  const algumFiltro = activeStatus || activeCategoria || activeSla || activeAtribuicao;
+  const algumFiltro = activeStatus || activeSetor || activeSla || activeAtribuicao || activeTecnico;
   bar?.classList.toggle('show', !!algumFiltro);
 
   const chipCat = document.getElementById('chip-cat');
-  if (chipCat) { chipCat.style.display = activeCategoria ? 'inline-block' : 'none'; chipCat.textContent = activeCategoria || ''; }
+  if (chipCat) { chipCat.style.display = activeSetor ? 'inline-block' : 'none'; chipCat.textContent = activeSetor || ''; }
 
   const chipStatus = document.getElementById('chip-status');
-  if (chipStatus) { chipStatus.style.display = activeStatus ? 'inline-block' : 'none'; chipStatus.textContent = activeStatus ? STATUS_LABEL[activeStatus] : ''; }
+  if (chipStatus) { chipStatus.style.display = activeStatus ? 'inline-block' : 'none'; chipStatus.textContent = activeStatus ? (STATUS_LABEL[activeStatus] || activeStatus) : ''; }
 
   const chipSla = document.getElementById('chip-sla');
   if (chipSla) { chipSla.style.display = activeSla ? 'inline-block' : 'none'; chipSla.textContent = activeSla ? SLA_LABEL[activeSla] : ''; }
@@ -610,12 +631,19 @@ function updateFilterBar() {
   const chipAtrib = document.getElementById('chip-atrib');
   if (chipAtrib) { chipAtrib.style.display = activeAtribuicao ? 'inline-block' : 'none'; chipAtrib.textContent = activeAtribuicao === 'sem_tecnico' ? 'Sem técnico' : ''; }
 
+  const chipTec = document.getElementById('chip-tec');
+  if (chipTec) {
+    chipTec.style.display = activeTecnico ? 'inline-block' : 'none';
+    chipTec.textContent = activeTecnico === '__sem__' ? 'Sem técnico' : (activeTecnico || '');
+  }
+
   updateActiveClasses();
 }
 
 function refreshFilteredViews() {
   render();
-  renderUnidadeSection();
+  renderSetorCards();
+  renderSetorSection();
   updateFilterBar();
 }
 
@@ -625,8 +653,8 @@ function refreshFilteredViews() {
 function initAll() {
   renderKpiNumbers();
   renderCategoryCards();
-  renderUnidadeCards();
-  renderUnidadeSection();
+  renderSetorCards();
+  renderSetorSection();
   renderQueues();
   render();
   updateFilterBar();
@@ -644,10 +672,11 @@ async function carregarDadosDaAPI() {
 
     TICKETS_BASE = mapearChamados(chamados).filter(t => REGRAS.status_considerados.includes(t.status));
     popularSeletorMes();
+    popularSeletorTecnico();
     aplicarFiltroMes();
 
     const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    if (textoEl) textoEl.textContent = `${chamados.length} chamados recebidos da API · atualizado às ${agora}`;
+    if (textoEl) textoEl.textContent = `${chamados.length} chamados recebidos da API · ${TICKETS_BASE.length} no painel · atualizado às ${agora}`;
     if (syncEl) syncEl.textContent = 'Conectado à API';
   } catch (erro) {
     console.error('Erro ao carregar dados da API:', erro);
@@ -688,15 +717,17 @@ function bindStaticEvents() {
   });
 
   document.getElementById('category-grid')?.addEventListener('click', e => {
-    const card = e.target.closest('.cat-card[data-cat]');
+    const card = e.target.closest('.cat-card[data-setor]');
     if (!card) return;
-    const cat = card.dataset.cat;
-    activeCategoria = activeCategoria === cat ? null : cat;
+    const setor = card.dataset.setor;
+    activeSetor = activeSetor === setor ? null : setor;
     refreshFilteredViews();
   });
 
   document.getElementById('clear-filters')?.addEventListener('click', () => {
-    activeStatus = activeCategoria = activeSla = activeAtribuicao = null;
+    activeStatus = activeSetor = activeSla = activeAtribuicao = activeTecnico = null;
+    const selTec = document.getElementById('filtro-tecnico');
+    if (selTec) selTec.value = '';
     refreshFilteredViews();
   });
 
@@ -708,7 +739,7 @@ function bindStaticEvents() {
         sortDir = sortField === f ? sortDir * -1 : 1;
         sortField = f;
         render();
-        renderUnidadeSection();
+        renderSetorSection();
         return;
       }
       const tr = e.target.closest('tbody tr[data-id]');
@@ -737,6 +768,11 @@ function bindStaticEvents() {
   document.getElementById('filtro-mes')?.addEventListener('change', e => {
     mesSelecionado = e.target.value;
     aplicarFiltroMes();
+  });
+
+  document.getElementById('filtro-tecnico')?.addEventListener('change', e => {
+    activeTecnico = e.target.value || null;
+    refreshFilteredViews();
   });
 }
 
