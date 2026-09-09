@@ -1,42 +1,37 @@
 // ----------------------------------------------------------------------
-// CONEXÃO COM A API (ajuste a porta/host se rodar o uvicorn diferente)
+// CONEXÃO COM A API
 // ----------------------------------------------------------------------
-const API_BASE = 'http://10.33.29.109:5000';
+const API_BASE = 'http://170.244.117.121:5000';
+
+// Chave da API (header X-API-Key). Deixe '' se a API não exigir.
+// Também aceita ?key=... na URL (guarda no navegador — útil p/ TV/telão).
+const API_KEY = (() => {
+  try {
+    const u = new URL(location.href);
+    const k = u.searchParams.get('key');
+    if (k) { localStorage.setItem('painel360_api_key', k); return k; }
+    return localStorage.getItem('painel360_api_key') || '';
+  } catch (e) { return ''; }
+})();
 
 // ----------------------------------------------------------------------
-// REGRAS DE NEGÓCIO
+// REGRAS DE NEGÓCIO (o filtro de escopo/categoria fica na API agora)
 // ----------------------------------------------------------------------
-// A CATEGORIZAÇÃO POR SETOR agora vem PRONTA da API (campo `setor`, derivado
-// da Categoria ITIL do GLPI). O frontend não adivinha mais pelo título.
-// Escopo do painel (definido na API): FINANCEIRO + CSC + MANUTENÇÃO.
 const REGRAS = {
-  status_considerados: [
-    'Em atendimento (atribuído)',
-    'Em atendimento (planejado)',
-    'Pendente',
-    'Solucionado',
-    'Fechado',
-  ],
+  status_considerados: ['Em atendimento (atribuído)', 'Em atendimento (planejado)', 'Pendente', 'Solucionado', 'Fechado'],
   ano_considerado: 2026,
 };
 
-// Cores por setor (as chaves batem com o campo `setor` vindo da API).
-const SETOR_COLOR = {
-  'FINANCEIRO': 'var(--frotas)',
-  'CSC': 'var(--compras)',
-  'MANUTENÇÃO': 'var(--manutencao)',
-  'OUTROS': 'var(--amber)',
-};
-const SETOR_ORDEM = ['CSC', 'FINANCEIRO', 'MANUTENÇÃO', 'OUTROS'];
+// As 5 categorias do painel — as chaves batem com o campo `categoria` da API.
+const CATS = [
+  { key: 'Compras',              hex: '#4fae7a' },
+  { key: 'Manutenção',           hex: '#3fb6c4' },
+  { key: 'Viagens Corporativas', hex: '#d98a4a' },
+  { key: 'Frotas',               hex: '#4a90d9' },
+  { key: 'VExpenses',            hex: '#a879e0' },
+];
 
-const STATUS_CLASS = {
-  'Novo': 'st-Novo',
-  'Em atendimento (atribuído)': 'st-Em-atendimento',
-  'Em atendimento (planejado)': 'st-Em-atendimento',
-  'Pendente': 'st-Pendente',
-  'Solucionado': 'st-Solucionado',
-  'Fechado': 'st-Fechado',
-};
+const STATUS_ORDER = ['Em atendimento (atribuído)', 'Em atendimento (planejado)', 'Pendente', 'Solucionado', 'Fechado'];
 const STATUS_LABEL = {
   'Novo': 'Novo',
   'Em atendimento (atribuído)': 'Em atendimento',
@@ -45,56 +40,51 @@ const STATUS_LABEL = {
   'Solucionado': 'Solucionado',
   'Fechado': 'Fechado',
 };
-const STATUS_COLOR = {
-  'Novo': 'var(--st-novo)',
-  'Em atendimento (atribuído)': 'var(--st-atend)',
-  'Em atendimento (planejado)': 'var(--st-atend)',
-  'Pendente': 'var(--st-pend)',
-  'Solucionado': 'var(--st-solved)',
-  'Fechado': 'var(--st-novo)',
+const STATUS_CLASS = {
+  'Novo': 'st-Novo',
+  'Em atendimento (atribuído)': 'st-Em-atendimento',
+  'Em atendimento (planejado)': 'st-Em-atendimento',
+  'Pendente': 'st-Pendente',
+  'Solucionado': 'st-Solucionado',
+  'Fechado': 'st-Fechado',
 };
-// Status que ainda demandam ação -> podem entrar na fila de "sem técnico".
-const STATUS_PRECISA_ATRIBUICAO = [
-  'Em atendimento (atribuído)',
-  'Em atendimento (planejado)',
-  'Pendente',
-];
+function statusColor(s) {
+  if (s === 'Pendente') return 'var(--st-pend)';
+  if (s === 'Solucionado') return 'var(--st-solved)';
+  if (s === 'Fechado') return 'var(--st-novo)';
+  return 'var(--st-atend)';
+}
 
-const PRIO_WEIGHT = { Alta: 3, Média: 2, Baixa: 1 };
-const PRIO_COLOR = { Alta: 'var(--st-pend)', Média: 'var(--st-atend)', Baixa: 'var(--compras)' };
 const SLA_LABEL = { ok: 'No prazo', warn: 'Quase vencendo', crit: 'Vencido', paused: 'Pausado' };
+const CORES_SLA = { ok: '#4fae7a', warn: 'var(--st-atend)', crit: 'var(--st-pend)', paused: '#6b7684' };
+const STATUS_SLA_RELEVANTES = ['Em atendimento (atribuído)', 'Em atendimento (planejado)', 'Solucionado', 'Fechado'];
+const STATUS_PRECISA_ATRIBUICAO = ['Em atendimento (atribuído)', 'Em atendimento (planejado)', 'Novo', 'Pendente'];
 
-const BRANCH_SUGGESTION = {};
+const PRIO_WEIGHT = { 'Alta': 3, 'Média': 2, 'Baixa': 1 };
+const PRIO_COLOR = { 'Alta': 'var(--st-pend)', 'Média': 'var(--st-atend)', 'Baixa': 'var(--compras)' };
 
 const NOMES_MES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 // ----------------------------------------------------------------------
 // ESTADO
 // ----------------------------------------------------------------------
-let TICKETS_BASE = [];   // já filtrado por REGRAS.status_considerados
-let TICKETS = [];        // TICKETS_BASE após filtro de mês
+let TICKETS = [];
+let TICKETS_BASE = [];        // já filtrado por status_considerados
+let BRANCH_SUGGESTION = {};
 let mesSelecionado = '';
+let activeCat = null;
 let activeStatus = null;
-let activeSetor = null;
 let activeSla = null;
 let activeAtribuicao = null;
 let activeTecnico = null;
-let sortField = null;
-let sortDir = 1;
+let sortState = {};
+let activeUnidade = null;
+let sortStateUnidade = {};
 
 // ----------------------------------------------------------------------
-// MAPEAMENTO / HELPERS DE DADOS
+// HELPERS DE DATA
 // ----------------------------------------------------------------------
-
-// GLPI: 1 muito baixa · 2 baixa · 3 média · 4 alta · 5 muito alta · 6 crítica.
-// O painel só distingue 3 faixas visuais.
-function bucketPrioridade(label) {
-  const l = String(label || '').toLowerCase();
-  if (l.includes('alta') || l.includes('crít') || l.includes('crit')) return 'Alta';
-  if (l.includes('baixa')) return 'Baixa';
-  return 'Média';
-}
-
+// API manda "YYYY-MM-DD HH:MM:SS"; o painel trabalha com "DD-MM-YYYY HH:MM".
 function converterData(dataStr) {
   if (!dataStr) return null;
   const [dataPart, horaPart] = String(dataStr).split(' ');
@@ -103,360 +93,527 @@ function converterData(dataStr) {
   const [h, m] = (horaPart || '00:00').split(':');
   return `${dia}-${mes}-${ano} ${h}:${m}`;
 }
-
-function parseDataHora(str) {
+function parseDateBR(str) {
   if (!str) return null;
-  const [dataPart, horaPart] = str.split(' ');
-  const [dia, mes, ano] = dataPart.split('-').map(Number);
-  const [h, m] = (horaPart || '0:0').split(':').map(Number);
-  const d = new Date(ano, mes - 1, dia, h || 0, m || 0);
+  const [datePart, timePart] = str.trim().split(' ');
+  const [dd, mm, yyyy] = datePart.split('-').map(Number);
+  let hh = 0, min = 0;
+  if (timePart) { [hh, min] = timePart.split(':').map(Number); }
+  const d = new Date(yyyy, mm - 1, dd, hh || 0, min || 0);
   return isNaN(d.getTime()) ? null : d;
 }
+const parseAbertura = parseDateBR;
 
-function mapearChamados(chamadosBrutos) {
-  return chamadosBrutos.map(ch => {
-    const tecnicos = Array.isArray(ch['tecnicos']) ? ch['tecnicos'] : [];
-    const requerentes = Array.isArray(ch['requerente_nomes']) ? ch['requerente_nomes'] : [];
-    const assuntoLimpo = ch['titulo_bruto'] ? String(ch['titulo_bruto']).replace(/\t/g, ' ').trim() : 'Sem Assunto';
+// ----------------------------------------------------------------------
+// MAPEAMENTO DO PAYLOAD DA API -> ticket do painel
+// ----------------------------------------------------------------------
+function bucketPrioridade(label) {
+  const l = String(label || '').toLowerCase();
+  if (l.includes('alta') || l.includes('crít') || l.includes('crit')) return 'Alta';
+  if (l.includes('baixa')) return 'Baixa';
+  return 'Média';
+}
 
+function mapearChamados(brutos) {
+  return brutos.map(ch => {
+    const tecnicos = Array.isArray(ch['tecnicos']) ? ch['tecnicos'].map(t => (t && t.nome) ? t.nome : String(t)) : [];
     return {
       id: String(ch['ID']),
-      assunto: assuntoLimpo,
-      solicitante: requerentes[0] || 'Sistema',
+      categoria: ch['categoria'] || 'Compras',
+      assunto: ch['titulo_bruto'] ? String(ch['titulo_bruto']).replace(/\t/g, ' ').trim() : 'Sem assunto',
+      solicitante: ch['solicitante'] || (Array.isArray(ch['requerente_nomes']) ? ch['requerente_nomes'][0] : '') || '',
       entidade: ch['Entidade'] ? String(ch['Entidade']).split('>').pop().trim() : 'LOGOS - MATRIZ',
-      setor: ch['setor'] || 'OUTROS',
-      categoria: ch['categoria_completename'] || '(sem categoria)',
-      categoriaId: ch['categoria_id'] != null ? String(ch['categoria_id']) : (ch['categoria_completename'] || 's/cat'),
-      prioridade: bucketPrioridade(ch['prioridade_label']),
-      prioridadeLabel: ch['prioridade_label'] || 'Não definida',
       status: ch['status_label'] || 'Desconhecido',
-      tecnicos: tecnicos.map(t => t && t.nome ? t.nome : String(t)),
-      tecnicosIds: (ch['tecnicos_ids'] || []).map(String),
+      prioridade: bucketPrioridade(ch['prioridade_label']),
+      prioridadeCompleta: ch['prioridade_label'] || 'Média',
+      abertura: converterData(ch['Data de abertura']),
       prazo: converterData(ch['Tempo para solução + Progresso']),
       fechamento: converterData(ch['Data de fechamento']),
-      abertura: converterData(ch['Data de abertura']),
+      tecnicos,
+      tecnicosIds: (ch['tecnicos_ids'] || []).map(String),
+      categoriaItil: ch['categoria_completename'] || '',
     };
   });
 }
 
-function diasAberto(t) {
-  const abertura = parseDataHora(t.abertura);
-  if (!abertura) return 0;
-  const fim = t.fechamento ? parseDataHora(t.fechamento) : new Date();
-  if (!fim) return 0;
-  return Math.max(0, Math.floor((fim - abertura) / 86400000));
-}
+// ----------------------------------------------------------------------
+// SLA — POLÍTICA (Cotação + Aprovação por prioridade, em dias úteis/horas)
+// ----------------------------------------------------------------------
+const POLITICA_SLA = {
+  'Crítica':     { cotacaoHoras: 12, aprovacaoHoras: 12 },
+  'Muito alta':  { cotacaoHoras: 12, aprovacaoHoras: 12 },
+  'Alta':        { cotacaoDiasUteis: 1.5, aprovacaoHoras: 12 },
+  'Média':       { cotacaoDiasUteis: 2, aprovacaoDiasUteis: 1 },
+  'Baixa':       { cotacaoDiasUteis: 4, aprovacaoDiasUteis: 1 },
+  'Muito baixa': { cotacaoDiasUteis: 4, aprovacaoDiasUteis: 1 },
+};
 
-function fmtDias(dias) {
-  if (dias <= 0) return 'hoje';
-  return `${dias} dia${dias === 1 ? '' : 's'}`;
+function adicionarHoras(data, horas) {
+  return new Date(data.getTime() + horas * 3600000);
 }
-
-function agePillClass(dias) {
-  if (dias >= 7) return 'crit';
-  if (dias >= 3) return 'warn';
-  return '';
+function adicionarDiasUteis(data, dias) {
+  const diasInteiros = Math.floor(dias);
+  const fracao = dias - diasInteiros;
+  let resultado = new Date(data);
+  let restantes = diasInteiros;
+  while (restantes > 0) {
+    resultado.setDate(resultado.getDate() + 1);
+    const dow = resultado.getDay();
+    if (dow !== 0 && dow !== 6) restantes--;
+  }
+  if (fracao > 0) resultado = adicionarHoras(resultado, fracao * 24);
+  return resultado;
 }
-
-function slaInfo(t) {
-  if (t.status === 'Pendente') return { cls: 'paused', label: SLA_LABEL.paused };
-  const prazo = parseDataHora(t.prazo);
-  if (!prazo) return { cls: null, label: null };
-  const encerrado = t.status === 'Solucionado' || t.status === 'Fechado';
-  const referencia = encerrado ? (parseDataHora(t.fechamento) || new Date()) : new Date();
-  const diffHoras = (prazo - referencia) / 3600000;
-  if (diffHoras < 0) return { cls: 'crit', label: SLA_LABEL.crit };
-  if (diffHoras <= 48) return { cls: 'warn', label: SLA_LABEL.warn };
-  return { cls: 'ok', label: SLA_LABEL.ok };
+function calcularPrazoEsperado(abertura, prioridadeCompleta) {
+  const pol = POLITICA_SLA[prioridadeCompleta] || POLITICA_SLA['Média'];
+  let data = new Date(abertura);
+  if (pol.cotacaoDiasUteis) data = adicionarDiasUteis(data, pol.cotacaoDiasUteis);
+  if (pol.cotacaoHoras) data = adicionarHoras(data, pol.cotacaoHoras);
+  if (pol.aprovacaoDiasUteis) data = adicionarDiasUteis(data, pol.aprovacaoDiasUteis);
+  if (pol.aprovacaoHoras) data = adicionarHoras(data, pol.aprovacaoHoras);
+  return data;
+}
+function slaStatusPolitica(t) {
+  if (t.status === 'Pendente') return 'paused';
+  const abertura = parseDateBR(t.abertura);
+  if (!abertura) return 'paused';
+  const due = calcularPrazoEsperado(abertura, t.prioridadeCompleta);
+  const duracaoTotalHoras = (due.getTime() - abertura.getTime()) / 3600000;
+  const encerrado = (t.status === 'Solucionado' || t.status === 'Fechado');
+  if (encerrado && t.fechamento) {
+    const fechado = parseDateBR(t.fechamento);
+    return fechado && fechado.getTime() > due.getTime() ? 'crit' : 'ok';
+  }
+  const horasRestantes = (due.getTime() - Date.now()) / 3600000;
+  if (horasRestantes < 0) return 'crit';
+  if (horasRestantes <= duracaoTotalHoras * 0.2) return 'warn';
+  return 'ok';
+}
+// SLA GLPI: usa o prazo que o próprio sistema calcula ("Tempo para solução").
+function slaStatusGlpi(t) {
+  if (!t.prazo) return 'paused';
+  const due = parseDateBR(t.prazo);
+  if (!due) return 'paused';
+  const encerrado = (t.status === 'Solucionado' || t.status === 'Fechado');
+  if (encerrado && t.fechamento) {
+    const fechado = parseDateBR(t.fechamento);
+    return fechado && fechado.getTime() > due.getTime() ? 'crit' : 'ok';
+  }
+  const hoursLeft = (due.getTime() - Date.now()) / 3600000;
+  if (hoursLeft < 0) return 'crit';
+  if (hoursLeft <= 48) return 'warn';
+  return 'ok';
 }
 
 function slaBadgeHtml(t) {
-  const info = slaInfo(t);
-  if (!info.cls) return '';
-  return `<span class="sla-badge ${info.cls}">${info.label}</span><span class="prazo-date">Prazo: ${t.prazo || '—'}</span>`;
-}
+  const sPol = slaStatusPolitica(t);
+  const sGlpi = slaStatusGlpi(t);
+  const encerrado = (t.status === 'Solucionado' || t.status === 'Fechado');
 
-function mesDaAbertura(aberturaStr) {
-  try { return aberturaStr.trim().split(' ')[0].split('-')[1]; } // 'DD-MM-YYYY' -> 'MM'
-  catch (e) { return null; }
-}
-
-function contarPor(lista, campoFn) {
-  const mapa = {};
-  lista.forEach(item => {
-    const chave = campoFn(item);
-    (mapa[chave] ||= []).push(item);
-  });
-  return mapa;
-}
-
-function setoresPresentes() {
-  const presentes = [...new Set(TICKETS.map(t => t.setor))];
-  return SETOR_ORDEM.filter(s => presentes.includes(s))
-    .concat(presentes.filter(s => !SETOR_ORDEM.includes(s)));
-}
-
-function sortTickets(items) {
-  const arr = items.slice();
-  if (!sortField) {
-    arr.sort((a, b) => {
-      const wa = PRIO_WEIGHT[a.prioridade] || 0, wb = PRIO_WEIGHT[b.prioridade] || 0;
-      if (wb !== wa) return wb - wa;
-      return diasAberto(b) - diasAberto(a);
-    });
-    return arr;
+  let linhaPolitica;
+  if (sPol === 'paused') {
+    linhaPolitica = `<span class="sla-badge paused">Política: ${SLA_LABEL[sPol]}</span>`;
+  } else {
+    const abertura = parseDateBR(t.abertura);
+    const due = abertura ? calcularPrazoEsperado(abertura, t.prioridadeCompleta) : null;
+    const dueStr = due ? due.toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+    linhaPolitica = `<span class="sla-badge ${sPol}">Política: ${SLA_LABEL[sPol]}</span><span class="prazo-date">esperado: ${dueStr}</span>`;
   }
-  arr.sort((a, b) => {
-    let va, vb;
-    switch (sortField) {
-      case 'id': va = Number(a.id); vb = Number(b.id); break;
-      case 'assunto': va = a.assunto.toLowerCase(); vb = b.assunto.toLowerCase(); break;
-      case 'status': va = a.status; vb = b.status; break;
-      case 'prioridade': va = PRIO_WEIGHT[a.prioridade] || 0; vb = PRIO_WEIGHT[b.prioridade] || 0; break;
-      case 'abertura': va = diasAberto(a); vb = diasAberto(b); break;
-      default: va = 0; vb = 0;
-    }
-    if (va < vb) return -1 * sortDir;
-    if (va > vb) return 1 * sortDir;
-    return 0;
-  });
-  return arr;
+
+  let linhaGlpi;
+  if (sGlpi === 'paused') {
+    linhaGlpi = `<span class="sla-badge paused">GLPI: ${SLA_LABEL[sGlpi]}</span><span class="prazo-date">sem prazo (aguardando)</span>`;
+  } else {
+    linhaGlpi = `<span class="sla-badge ${sGlpi}">GLPI: ${SLA_LABEL[sGlpi]}</span><span class="prazo-date">${t.prazo || '—'}${encerrado && t.fechamento ? ' · fechado: ' + t.fechamento : ''}</span>`;
+  }
+  return `<div class="sla-badge-linha">${linhaPolitica}</div><div class="sla-badge-linha">${linhaGlpi}</div>`;
 }
 
-function filteredTickets() {
+function contagemSla(itens, fnSla) {
+  const c = { ok: 0, warn: 0, crit: 0, paused: 0 };
+  itens.forEach(t => c[fnSla(t)]++);
+  return c;
+}
+function pontosSla(c) {
+  return `
+    <span><span class="pt" style="background:${CORES_SLA.ok}"></span>${c.ok}</span>
+    <span><span class="pt" style="background:${CORES_SLA.warn}"></span>${c.warn}</span>
+    <span><span class="pt" style="background:${CORES_SLA.crit}"></span>${c.crit}</span>
+    <span><span class="pt" style="background:${CORES_SLA.paused}"></span>${c.paused}</span>`;
+}
+function slaBreakdownHtml(items) {
+  return STATUS_SLA_RELEVANTES.map(s => {
+    const itensStatus = items.filter(t => t.status === s);
+    if (itensStatus.length === 0) return '';
+    const cPol = contagemSla(itensStatus, slaStatusPolitica);
+    const cGlpi = contagemSla(itensStatus, slaStatusGlpi);
+    return `
+      <div class="cat-sla-row"><span class="rotulo">${STATUS_LABEL[s]}</span><span class="contagens"></span></div>
+      <div class="cat-sla-subrow"><span class="rotulo-base">Política</span><span class="contagens">${pontosSla(cPol)}</span></div>
+      <div class="cat-sla-subrow"><span class="rotulo-base">GLPI</span><span class="contagens">${pontosSla(cGlpi)}</span></div>`;
+  }).join('');
+}
+
+// ----------------------------------------------------------------------
+// KPIs
+// ----------------------------------------------------------------------
+function semTecnicoRelevante(t) {
+  return t.tecnicos.length === 0 && STATUS_PRECISA_ATRIBUICAO.includes(t.status);
+}
+function ehEmAtendimento(s) { return s === 'Em atendimento (atribuído)' || s === 'Em atendimento (planejado)'; }
+
+function renderKpiNumbers() {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('kpi-total', TICKETS.length);
+  set('kpi-atend', TICKETS.filter(t => ehEmAtendimento(t.status)).length);
+  set('kpi-pend', TICKETS.filter(t => t.status === 'Pendente').length);
+  set('kpi-solved', TICKETS.filter(t => t.status === 'Solucionado').length);
+  set('kpi-closed', TICKETS.filter(t => t.status === 'Fechado').length);
+
+  set('sla-ok', TICKETS.filter(t => slaStatusPolitica(t) === 'ok').length);
+  set('sla-warn', TICKETS.filter(t => slaStatusPolitica(t) === 'warn').length);
+  set('sla-crit', TICKETS.filter(t => slaStatusPolitica(t) === 'crit').length);
+  set('sla-paused', TICKETS.filter(t => slaStatusPolitica(t) === 'paused').length);
+
+  set('sla-ok-glpi', TICKETS.filter(t => slaStatusGlpi(t) === 'ok').length);
+  set('sla-warn-glpi', TICKETS.filter(t => slaStatusGlpi(t) === 'warn').length);
+  set('sla-crit-glpi', TICKETS.filter(t => slaStatusGlpi(t) === 'crit').length);
+  set('sla-paused-glpi', TICKETS.filter(t => slaStatusGlpi(t) === 'paused').length);
+
+  set('kpi-sem-tecnico', TICKETS.filter(semTecnicoRelevante).length);
+  updateActiveClasses();
+}
+
+// ----------------------------------------------------------------------
+// CLOCK
+// ----------------------------------------------------------------------
+function updateClock() {
+  const now = new Date();
+  const c = document.getElementById('clock');
+  const d = document.getElementById('dateline');
+  if (c) c.textContent = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (d) d.textContent = now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase();
+}
+
+// ----------------------------------------------------------------------
+// CARDS DE CATEGORIA
+// ----------------------------------------------------------------------
+function renderCategoryCards() {
+  const grid = document.getElementById('category-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  CATS.forEach(cat => {
+    const items = TICKETS.filter(t => t.categoria === cat.key);
+    const counts = {};
+    STATUS_ORDER.forEach(s => counts[s] = items.filter(t => t.status === s).length);
+    const total = items.length;
+
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+    card.style.setProperty('--cat-color', cat.hex);
+    card.dataset.cat = cat.key;
+    card.innerHTML = `
+      <div><span class="dot"></span><span class="cat-name">${cat.key}</span></div>
+      <div class="flap">${String(total).padStart(2, '0')}</div>
+      <div class="mini-bars">
+        ${STATUS_ORDER.map(s => {
+          const pct = total ? (counts[s] / total * 100) : 0;
+          return pct ? `<span style="width:${pct}%;background:${statusColor(s)}"></span>` : '';
+        }).join('')}
+      </div>
+      <div class="cat-legend">
+        ${STATUS_ORDER.filter(s => counts[s]).map(s => `<span>${STATUS_LABEL[s]} <b>${counts[s]}</b></span>`).join('')}
+      </div>
+      <div class="cat-sla-breakdown">${slaBreakdownHtml(items)}</div>`;
+    card.addEventListener('click', () => {
+      activeCat = activeCat === cat.key ? null : cat.key;
+      render();
+      document.getElementById('sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    grid.appendChild(card);
+  });
+  updateActiveClasses();
+}
+
+// ----------------------------------------------------------------------
+// TABELA
+// ----------------------------------------------------------------------
+function tecnicoCell(t) {
+  if (t.tecnicos && t.tecnicos.length) return t.tecnicos.join(', ');
+  const sug = BRANCH_SUGGESTION[t.entidade];
+  return `<span class="unassigned-tag">Sem técnico</span>` +
+    (sug ? `<br><small style="color:var(--text-dim)">sugestão: ${sug}</small>` : '');
+}
+
+function renderTable(items, sortKey, sortDir) {
+  const sorted = [...items];
+  if (sortKey) {
+    sorted.sort((a, b) => {
+      let av, bv;
+      if (sortKey === 'abertura' || sortKey === 'prazo') {
+        av = parseDateBR(a[sortKey])?.getTime() || 0;
+        bv = parseDateBR(b[sortKey])?.getTime() || 0;
+      } else if (sortKey === 'prioridade') {
+        av = PRIO_WEIGHT[a.prioridade] || 0; bv = PRIO_WEIGHT[b.prioridade] || 0;
+      } else if (sortKey === 'id') {
+        av = Number(a.id); bv = Number(b.id);
+      } else if (sortKey === 'tecnico') {
+        av = (a.tecnicos[0] || '~').toLowerCase(); bv = (b.tecnicos[0] || '~').toLowerCase();
+      } else {
+        av = String(a[sortKey] || '').toLowerCase(); bv = String(b[sortKey] || '').toLowerCase();
+      }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+  const rows = sorted.map(t => `
+    <tr data-id="${t.id}">
+      <td class="id">#${t.id}</td>
+      <td class="assunto">${t.assunto}<small>${t.solicitante || ''}</small></td>
+      <td>${t.entidade}</td>
+      <td><span class="prio prio-${t.prioridade}">${t.prioridade}</span></td>
+      <td><span class="badge ${STATUS_CLASS[t.status] || ''}">${STATUS_LABEL[t.status] || t.status}</span></td>
+      <td>${tecnicoCell(t)}</td>
+      <td>${slaBadgeHtml(t)}</td>
+      <td style="font-family:var(--mono);white-space:nowrap;color:var(--text-dim);">${t.abertura || '—'}</td>
+    </tr>`).join('');
+
+  return `
+    <table>
+      <thead><tr>
+        <th data-key="id">ID</th>
+        <th data-key="assunto">Assunto / Solicitante</th>
+        <th data-key="entidade">Unidade</th>
+        <th data-key="prioridade">Prioridade</th>
+        <th data-key="status">Status</th>
+        <th data-key="tecnico">Técnico</th>
+        <th>Prazo (SLA)</th>
+        <th data-key="abertura">Abertura</th>
+      </tr></thead>
+      <tbody>${rows || `<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">Nenhum chamado</td></tr>`}</tbody>
+    </table>`;
+}
+
+// ----------------------------------------------------------------------
+// VISÃO POR CATEGORIA
+// ----------------------------------------------------------------------
+function filteredItems(catKey) {
   return TICKETS.filter(t => {
-    if (activeStatus && t.status !== activeStatus) return false;
-    if (activeSetor && t.setor !== activeSetor) return false;
+    if (t.categoria !== catKey) return false;
+    if (activeStatus && activeStatus !== '__all__' && t.status !== activeStatus) return false;
+    if (activeSla && slaStatusPolitica(t) !== activeSla) return false;
+    if (activeAtribuicao === 'sem_tecnico' && !semTecnicoRelevante(t)) return false;
     if (activeTecnico) {
       if (activeTecnico === '__sem__') { if (t.tecnicos.length) return false; }
       else if (!t.tecnicos.includes(activeTecnico)) return false;
-    }
-    if (activeSla) {
-      const info = slaInfo(t);
-      if (!info.cls || info.cls !== activeSla) return false;
-    }
-    if (activeAtribuicao === 'sem_tecnico') {
-      if (!(STATUS_PRECISA_ATRIBUICAO.includes(t.status) && t.tecnicos.length === 0)) return false;
     }
     return true;
   });
 }
 
-// ----------------------------------------------------------------------
-// RENDER: KPIs, SLA, setores, tabela principal
-// ----------------------------------------------------------------------
-function ehEmAtendimento(st) { return st === 'Em atendimento (atribuído)' || st === 'Em atendimento (planejado)'; }
-
-function renderKpiNumbers() {
-  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-
-  setText('kpi-total', TICKETS.length);
-  setText('kpi-atend', TICKETS.filter(t => ehEmAtendimento(t.status)).length);
-  setText('kpi-pend', TICKETS.filter(t => t.status === 'Pendente').length);
-  setText('kpi-solved', TICKETS.filter(t => t.status === 'Solucionado').length);
-  setText('kpi-closed', TICKETS.filter(t => t.status === 'Fechado').length);
-  setText('kpi-sem-tecnico', TICKETS.filter(t => STATUS_PRECISA_ATRIBUICAO.includes(t.status) && t.tecnicos.length === 0).length);
-
-  const slaCount = { ok: 0, warn: 0, crit: 0, paused: 0 };
-  TICKETS.forEach(t => { const info = slaInfo(t); if (info.cls) slaCount[info.cls]++; });
-  setText('sla-ok', slaCount.ok);
-  setText('sla-warn', slaCount.warn);
-  setText('sla-crit', slaCount.crit);
-  setText('sla-paused', slaCount.paused);
-
-  updateActiveClasses();
-}
-
-function renderCategoryCards() {
-  const root = document.getElementById('category-grid');
-  if (!root) return;
-  const statusList = Object.keys(STATUS_COLOR).filter(s => REGRAS.status_considerados.includes(s));
-
-  root.innerHTML = setoresPresentes().map(nome => {
-    const items = TICKETS.filter(t => t.setor === nome);
-    const cor = SETOR_COLOR[nome] || 'var(--amber)';
-    const total = items.length || 1;
-    const bars = statusList.map(st => {
-      const n = items.filter(t => t.status === st).length;
-      if (!n) return '';
-      return `<span style="width:${(n / total * 100).toFixed(1)}%; background:${STATUS_COLOR[st]}"></span>`;
-    }).join('');
-    const legenda = statusList
-      .filter(st => items.some(t => t.status === st))
-      .map(st => `<span><b>${items.filter(t => t.status === st).length}</b> ${STATUS_LABEL[st]}</span>`)
-      .join('');
-
-    return `
-      <div class="cat-card" data-setor="${nome}" style="--cat-color:${cor}">
-        <div class="cat-name"><span class="dot"></span>${nome}</div>
-        <div class="flap">${items.length}</div>
-        <div class="mini-bars">${bars}</div>
-        <div class="cat-legend">${legenda}</div>
-      </div>`;
-  }).join('');
-}
-
-function renderSetorCards() {
-  const root = document.getElementById('unidade-cards');
-  if (!root) return;
-  const filtrados = filteredTickets();
-  const porSetor = contarPor(filtrados, t => t.setor);
-  const nomes = Object.keys(porSetor).sort((a, b) => porSetor[b].length - porSetor[a].length);
-
-  root.innerHTML = nomes.map(nome => {
-    const items = porSetor[nome];
-    const semTecnico = items.filter(t => STATUS_PRECISA_ATRIBUICAO.includes(t.status) && t.tecnicos.length === 0).length;
-    const cor = SETOR_COLOR[nome] || 'var(--amber)';
-    return `
-      <div class="cat-card" style="--cat-color:${cor}">
-        <div class="cat-name"><span class="dot"></span>${nome}</div>
-        <div class="flap">${items.length}</div>
-        <div class="cat-legend"><span><b>${semTecnico}</b> sem técnico</span></div>
-      </div>`;
-  }).join('') || `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado no período</div>`;
-}
-
-function buildTicketsTableHtml(items) {
-  const sorted = sortTickets(items);
-  const rows = sorted.map(t => {
-    const tecNomes = t.tecnicos.length ? t.tecnicos.join(', ') : '—';
-    return `
-      <tr data-id="${t.id}">
-        <td class="id">#${t.id}</td>
-        <td class="assunto">${t.assunto}<small>${t.solicitante} · ${t.categoria}</small></td>
-        <td><span class="badge ${STATUS_CLASS[t.status] || ''}">${STATUS_LABEL[t.status] || t.status}</span></td>
-        <td><span class="prio prio-${t.prioridade}">${t.prioridade}</span></td>
-        <td>${tecNomes}</td>
-        <td>${fmtDias(diasAberto(t))}</td>
-        <td>${slaBadgeHtml(t)}</td>
-      </tr>`;
-  }).join('');
-
-  return `
-    <table>
-      <thead><tr>
-        <th data-field="id">ID</th>
-        <th data-field="assunto">Assunto</th>
-        <th data-field="status">Status</th>
-        <th data-field="prioridade">Prioridade</th>
-        <th>Técnico</th>
-        <th data-field="abertura">Aberto há</th>
-        <th>SLA</th>
-      </tr></thead>
-      <tbody>${rows || `<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">Nenhum chamado encontrado</td></tr>`}</tbody>
-    </table>`;
-}
-
-// Visão principal: agrupada por CATEGORIA (completename da Categoria ITIL).
 function render() {
+  updateActiveClasses();
+  updateFilterBar();
+
   const root = document.getElementById('sections');
   if (!root) return;
-  const filtrados = filteredTickets();
+  const anyFilter = activeCat || (activeStatus && activeStatus !== '__all__') || activeSla || activeAtribuicao || activeTecnico;
+  root.innerHTML = '';
 
-  const porCategoria = contarPor(filtrados, t => t.categoria);
-  const nomes = Object.keys(porCategoria).sort((a, b) => porCategoria[b].length - porCategoria[a].length);
+  CATS.forEach(cat => {
+    if (activeCat && cat.key !== activeCat) return;
+    const items = filteredItems(cat.key);
+    if (!items.length && !activeCat && !anyFilter) return;
 
-  const html = nomes.map(nome => {
-    const items = porCategoria[nome];
-    const setor = items[0] ? items[0].setor : 'OUTROS';
-    const cor = SETOR_COLOR[setor] || 'var(--amber)';
-    return `
-      <div class="section">
-        <div class="section-head">
-          <h2 style="color:${cor}"><span class="dot" style="background:${cor}"></span>${nome}</h2>
-          <span class="section-count">${setor} · ${items.length} chamado${items.length === 1 ? '' : 's'}</span>
-        </div>
-        ${buildTicketsTableHtml(items)}
-      </div>`;
-  }).join('');
+    const section = document.createElement('div');
+    section.className = 'section';
+    const st = sortState[cat.key] || { key: null, dir: 'asc' };
+    section.innerHTML = `
+      <div class="section-head">
+        <h2 style="color:${cat.hex}"><span class="dot" style="background:${cat.hex}"></span>${cat.key}</h2>
+        <span class="section-count">${items.length} chamado${items.length === 1 ? '' : 's'}${anyFilter ? ' com esse filtro' : ' no período'}</span>
+      </div>
+      ${items.length ? renderTable(items, st.key, st.dir) : `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado ${anyFilter ? 'com esse filtro' : 'nesse período'}</div>`}`;
 
-  root.innerHTML = html || `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado encontrado com esse filtro</div>`;
+    section.addEventListener('click', (e) => {
+      const th = e.target.closest('th[data-key]');
+      if (th) {
+        const key = th.dataset.key;
+        const cur = sortState[cat.key] || { key: null, dir: 'asc' };
+        sortState[cat.key] = { key, dir: (cur.key === key && cur.dir === 'asc') ? 'desc' : 'asc' };
+        render();
+        return;
+      }
+      const tr = e.target.closest('tr[data-id]');
+      if (tr) {
+        const tk = items.find(x => x.id === tr.dataset.id);
+        if (tk) openModal(tk);
+      }
+    });
+    root.appendChild(section);
+  });
+
+  if (!root.children.length) {
+    root.innerHTML = `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado encontrado com esse filtro</div>`;
+  }
 }
 
-// Aba "Por setor": agrupada por FINANCEIRO / CSC / MANUTENÇÃO.
-function renderSetorSection() {
+// ----------------------------------------------------------------------
+// VISÃO POR UNIDADE
+// ----------------------------------------------------------------------
+function renderUnidadeCards() {
+  const grid = document.getElementById('unidade-cards');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const unidades = Array.from(new Set(TICKETS.map(t => t.entidade)))
+    .sort((a, b) => TICKETS.filter(t => t.entidade === b).length - TICKETS.filter(t => t.entidade === a).length);
+
+  unidades.forEach(unidade => {
+    const items = TICKETS.filter(t => t.entidade === unidade);
+    const total = items.length;
+    const countsCat = {};
+    CATS.forEach(cat => countsCat[cat.key] = items.filter(t => t.categoria === cat.key).length);
+
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+    card.style.setProperty('--cat-color', 'var(--amber)');
+    card.dataset.unidade = unidade;
+    card.innerHTML = `
+      <div><span class="dot"></span><span class="cat-name">${unidade}</span></div>
+      <div class="flap">${String(total).padStart(2, '0')}</div>
+      <div class="mini-bars">
+        ${CATS.map(cat => {
+          const pct = total ? (countsCat[cat.key] / total * 100) : 0;
+          return pct ? `<span style="width:${pct}%;background:${cat.hex}"></span>` : '';
+        }).join('')}
+      </div>
+      <div class="cat-legend">
+        ${CATS.filter(cat => countsCat[cat.key] > 0).map(cat => `<span style="color:${cat.hex}">${cat.key} <b>${countsCat[cat.key]}</b></span>`).join('')}
+      </div>`;
+    card.addEventListener('click', () => {
+      activeUnidade = activeUnidade === unidade ? null : unidade;
+      document.querySelectorAll('#unidade-cards .cat-card').forEach(c => c.classList.toggle('active', c.dataset.unidade === activeUnidade));
+      renderUnidadeSection();
+    });
+    grid.appendChild(card);
+  });
+  document.querySelectorAll('#unidade-cards .cat-card').forEach(c => c.classList.toggle('active', c.dataset.unidade === activeUnidade));
+
+  // com uma unidade só, já abre ela
+  if (!activeUnidade && unidades.length === 1) activeUnidade = unidades[0];
+}
+
+function renderUnidadeSection() {
   const root = document.getElementById('unidade-sections');
   if (!root) return;
-  const filtrados = filteredTickets();
-  const porSetor = contarPor(filtrados, t => t.setor);
-  const nomes = Object.keys(porSetor).sort((a, b) => porSetor[b].length - porSetor[a].length);
+  if (!activeUnidade) {
+    root.innerHTML = `<div class="empty-flap"><span class="zero">00</span>Clique numa unidade acima para ver os chamados dela por categoria</div>`;
+    return;
+  }
+  const itemsUnidade = TICKETS.filter(t => t.entidade === activeUnidade);
+  root.innerHTML = `
+    <div class="section-head">
+      <h2 style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span>${activeUnidade}</h2>
+      <span class="section-count">${itemsUnidade.length} chamado${itemsUnidade.length === 1 ? '' : 's'} no período, por categoria</span>
+    </div>`;
 
-  root.innerHTML = nomes.map(nome => {
-    const items = porSetor[nome];
-    const cor = SETOR_COLOR[nome] || 'var(--amber)';
-    return `
-      <div class="section">
-        <div class="section-head">
-          <h2 style="color:${cor}"><span class="dot" style="background:${cor}"></span>${nome}</h2>
-          <span class="section-count">${items.length} chamado${items.length === 1 ? '' : 's'}</span>
-        </div>
-        ${buildTicketsTableHtml(items)}
-      </div>`;
-  }).join('') || `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado encontrado com esse filtro</div>`;
+  CATS.forEach(cat => {
+    const items = itemsUnidade.filter(t => t.categoria === cat.key);
+    const chave = activeUnidade + '|' + cat.key;
+    const st = sortStateUnidade[chave] || { key: null, dir: 'asc' };
+    const bloco = document.createElement('div');
+    bloco.style.marginTop = '18px';
+    bloco.innerHTML = `
+      <div class="section-head" style="margin-bottom:8px;">
+        <h2 style="font-size:14px; color:${cat.hex}"><span class="dot" style="background:${cat.hex}"></span>${cat.key}</h2>
+        <span class="section-count">${items.length} chamado${items.length === 1 ? '' : 's'}</span>
+      </div>
+      ${items.length ? renderTable(items, st.key, st.dir) : `<div class="empty-flap" style="padding:18px;">Nenhum chamado dessa categoria</div>`}`;
+    root.appendChild(bloco);
+
+    if (items.length) {
+      bloco.querySelector('table thead').addEventListener('click', (e) => {
+        const th = e.target.closest('th[data-key]');
+        if (!th) return;
+        const cur = sortStateUnidade[chave] || { key: null, dir: 'asc' };
+        sortStateUnidade[chave] = { key: th.dataset.key, dir: (cur.key === th.dataset.key && cur.dir === 'asc') ? 'desc' : 'asc' };
+        renderUnidadeSection();
+      });
+      bloco.querySelectorAll('table tbody tr').forEach(tr => {
+        tr.addEventListener('click', () => {
+          const tk = items.find(x => x.id === tr.dataset.id);
+          if (tk) openModal(tk);
+        });
+      });
+    }
+  });
 }
 
 // ----------------------------------------------------------------------
 // FILA POR TÉCNICO
 // ----------------------------------------------------------------------
+function diasAberto(t) {
+  const ab = parseAbertura(t.abertura);
+  if (!ab) return 0;
+  const fim = t.fechamento ? (parseDateBR(t.fechamento) || new Date()) : new Date();
+  return Math.max(0, (fim.getTime() - ab.getTime()) / 86400000);
+}
+function agePillClass(dias) {
+  if (dias >= 10) return 'crit';
+  if (dias >= 5) return 'warn';
+  return '';
+}
+function fmtDias(dias) {
+  const d = Math.floor(dias);
+  if (d < 1) return 'hoje';
+  return d + (d === 1 ? ' dia' : ' dias');
+}
+
 function buildQueues() {
   const map = {};
   TICKETS.forEach(t => {
     const people = t.tecnicos.length ? t.tecnicos : (STATUS_PRECISA_ATRIBUICAO.includes(t.status) ? ['Não atribuído'] : []);
-    people.forEach(p => {
-      if (!map[p]) map[p] = [];
-      map[p].push(t);
-    });
+    people.forEach(p => { (map[p] ||= []).push(t); });
   });
-
   Object.keys(map).forEach(p => {
     map[p].sort((a, b) => {
-      const wa = PRIO_WEIGHT[a.prioridade] || 0;
-      const wb = PRIO_WEIGHT[b.prioridade] || 0;
-      if (wb !== wa) return wb - wa;
-      return diasAberto(b) - diasAberto(a);
+      const w = (PRIO_WEIGHT[b.prioridade] || 0) - (PRIO_WEIGHT[a.prioridade] || 0);
+      return w !== 0 ? w : diasAberto(b) - diasAberto(a);
     });
   });
   return map;
 }
 
 function renderQueues() {
-  const map = buildQueues();
   const root = document.getElementById('queue-grid');
   if (!root) return;
+  const map = buildQueues();
   root.innerHTML = '';
-
   const naoAtribuido = map['Não atribuído'] || [];
   delete map['Não atribuído'];
 
-  const names = Object.keys(map).sort((a, b) => map[b].length - map[a].length);
-
-  names.forEach(name => {
+  Object.keys(map).sort((a, b) => map[b].length - map[a].length).forEach(name => {
     const items = map[name];
-    const altaCount = items.filter(t => t.prioridade === 'Alta').length;
-    const oldestDias = items.length ? Math.max(...items.map(diasAberto)) : 0;
-
+    const alta = items.filter(t => t.prioridade === 'Alta').length;
+    const oldest = items.length ? Math.max(...items.map(diasAberto)) : 0;
     const col = document.createElement('div');
     col.className = 'person-col';
-
     const head = document.createElement('div');
     head.className = 'person-head';
     head.innerHTML = `
       <div class="name">${name}</div>
       <div class="meta">
         <span><b>${items.length}</b> na fila</span>
-        <span><b>${altaCount}</b> alta prioridade</span>
-        <span>mais antigo: <b>${fmtDias(oldestDias)}</b></span>
+        <span><b>${alta}</b> alta prioridade</span>
+        <span>mais antigo: <b>${fmtDias(oldest)}</b></span>
       </div>
-    `;
+      <div class="cat-sla-breakdown">${slaBreakdownHtml(items)}</div>`;
     col.appendChild(head);
-
     const list = document.createElement('ul');
     list.className = 'queue-list';
-    if (items.length === 0) {
-      list.innerHTML = `<div class="queue-empty">Fila vazia</div>`;
-    } else {
-      items.forEach((t, i) => list.appendChild(buildQueueItem(t, i)));
-    }
+    if (!items.length) list.innerHTML = `<div class="queue-empty">Fila vazia</div>`;
+    else items.forEach((t, i) => list.appendChild(buildQueueItem(t, i)));
     col.appendChild(list);
     root.appendChild(col);
   });
@@ -481,10 +638,7 @@ function buildQueueItem(t, i) {
       <span class="age-pill ${agePillClass(dias)}">aberto há ${fmtDias(dias)}</span>
       <span class="cat-tag">${t.categoria}</span>
     </div>
-    <div class="row2" style="margin-top:5px;">
-      ${slaBadgeHtml(t)}
-    </div>
-  `;
+    <div class="row2" style="margin-top:5px;">${slaBadgeHtml(t)}</div>`;
   li.addEventListener('click', () => openModal(t));
   return li;
 }
@@ -497,34 +651,23 @@ function renderUnassignedByBranch(items) {
     root.innerHTML = `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado sem técnico no momento</div>`;
     return;
   }
-
-  const byBranch = contarPor(items, t => t.setor);
-  Object.values(byBranch).forEach(arr => {
-    arr.sort((a, b) => {
-      const wa = PRIO_WEIGHT[a.prioridade] || 0;
-      const wb = PRIO_WEIGHT[b.prioridade] || 0;
-      if (wb !== wa) return wb - wa;
-      return diasAberto(b) - diasAberto(a);
-    });
-  });
-
-  const branches = Object.keys(byBranch).sort((a, b) => byBranch[b].length - byBranch[a].length);
-
-  branches.forEach(branch => {
+  const byBranch = {};
+  items.forEach(t => { (byBranch[t.entidade] ||= []).push(t); });
+  Object.values(byBranch).forEach(arr => arr.sort((a, b) => {
+    const w = (PRIO_WEIGHT[b.prioridade] || 0) - (PRIO_WEIGHT[a.prioridade] || 0);
+    return w !== 0 ? w : diasAberto(b) - diasAberto(a);
+  }));
+  Object.keys(byBranch).sort((a, b) => byBranch[b].length - byBranch[a].length).forEach(branch => {
     const arr = byBranch[branch];
-    const sugestao = BRANCH_SUGGESTION[branch];
-
+    const sug = BRANCH_SUGGESTION[branch];
     const col = document.createElement('div');
     col.className = 'person-col unassigned';
-
     const head = document.createElement('div');
     head.className = 'branch-group-head';
     head.innerHTML = `
       <span><b>${branch}</b> · ${arr.length} chamado${arr.length === 1 ? '' : 's'}</span>
-      <span>${sugestao ? 'quem atende: <span class="sug">' + sugestao + '</span>' : 'setor'}</span>
-    `;
+      <span>${sug ? 'quem costuma atender: <span class="sug">' + sug + '</span>' : 'sem histórico de técnico'}</span>`;
     col.appendChild(head);
-
     const list = document.createElement('ul');
     list.className = 'queue-list';
     arr.forEach((t, i) => list.appendChild(buildQueueItem(t, i)));
@@ -534,130 +677,153 @@ function renderUnassignedByBranch(items) {
 }
 
 // ----------------------------------------------------------------------
-// MODAL DE DETALHES
+// MODAL
 // ----------------------------------------------------------------------
 function openModal(t) {
   const body = document.getElementById('modal-body');
   const overlay = document.getElementById('overlay');
   if (!body || !overlay) return;
-  const tecNomes = t.tecnicos.length ? t.tecnicos.join(', ') : 'Não atribuído';
-
+  const temTec = t.tecnicos && t.tecnicos.length;
+  const sug = BRANCH_SUGGESTION[t.entidade];
   body.innerHTML = `
-    <div class="m-id">CHAMADO #${t.id}</div>
+    <div class="m-id">CHAMADO #${t.id} · ${t.categoria}</div>
     <h3>${t.assunto}</h3>
     <div class="grid">
       <div class="field"><div class="k">Status</div><div class="v"><span class="badge ${STATUS_CLASS[t.status] || ''}">${STATUS_LABEL[t.status] || t.status}</span></div></div>
-      <div class="field"><div class="k">Prioridade</div><div class="v"><span class="prio prio-${t.prioridade}">${t.prioridadeLabel}</span></div></div>
-      <div class="field"><div class="k">Setor</div><div class="v">${t.setor}</div></div>
-      <div class="field"><div class="k">Categoria</div><div class="v">${t.categoria}</div></div>
+      <div class="field"><div class="k">Prioridade</div><div class="v prio prio-${t.prioridade}">${t.prioridadeCompleta}</div></div>
       <div class="field"><div class="k">Solicitante</div><div class="v">${t.solicitante || '—'}</div></div>
-      <div class="field"><div class="k">Técnico</div><div class="v">${tecNomes}</div></div>
-      <div class="field"><div class="k">Abertura</div><div class="v">${t.abertura || '—'}</div></div>
-      <div class="field"><div class="k">Prazo (SLA)</div><div class="v">${t.prazo || '—'}</div></div>
-      <div class="field full"><div class="k">Fechamento</div><div class="v">${t.fechamento || 'Em aberto'}</div></div>
-      <div class="field full"><div class="k">SLA</div><div class="v">${slaBadgeHtml(t) || '—'}</div></div>
-    </div>
-  `;
+      <div class="field"><div class="k">Técnico responsável</div><div class="v">${temTec ? t.tecnicos.join(', ') : ('não atribuído' + (sug ? ' · sugestão: ' + sug : ''))}</div></div>
+      <div class="field"><div class="k">Unidade / Entidade</div><div class="v">${t.entidade}</div></div>
+      <div class="field"><div class="k">Categoria ITIL</div><div class="v">${t.categoriaItil || '—'}</div></div>
+      <div class="field"><div class="k">Data de abertura</div><div class="v">${t.abertura || '—'}</div></div>
+      <div class="field"><div class="k">Fechamento</div><div class="v">${t.fechamento || 'Em aberto'}</div></div>
+      <div class="field full"><div class="k">Prazo de solução (SLA)</div><div class="v">${slaBadgeHtml(t)}</div></div>
+    </div>`;
   overlay.classList.add('show');
 }
+function closeModal() { document.getElementById('overlay')?.classList.remove('show'); }
 
-function closeModal() {
-  document.getElementById('overlay')?.classList.remove('show');
+// ----------------------------------------------------------------------
+// FILTRO DE MÊS  (ativo no mês) + FILTRO DE TÉCNICO + barra de chips
+// ----------------------------------------------------------------------
+function mesDaAbertura(s) {
+  try { return s.trim().split(' ')[0].split('-')[1]; } catch (e) { return null; }
 }
-
-// ----------------------------------------------------------------------
-// FILTRO DE MÊS / TÉCNICO / FILTRO ATIVO (chips)
-// ----------------------------------------------------------------------
 function popularSeletorMes() {
   const select = document.getElementById('filtro-mes');
   if (!select) return;
-  const mesesPresentes = [...new Set(TICKETS_BASE.map(t => mesDaAbertura(t.abertura)))].filter(Boolean).sort();
-  const valorAtual = select.value;
+  const meses = Array.from(new Set(TICKETS_BASE.map(t => mesDaAbertura(t.abertura)))).filter(Boolean).sort();
+  const atual = select.value;
   select.innerHTML = `<option value="">Todos os meses de ${REGRAS.ano_considerado}</option>` +
-    mesesPresentes.map(m => `<option value="${m}">${NOMES_MES[parseInt(m, 10) - 1]}</option>`).join('');
-  select.value = mesesPresentes.includes(valorAtual) ? valorAtual : '';
+    meses.map(m => `<option value="${m}">${NOMES_MES[parseInt(m, 10) - 1]}</option>`).join('');
+  select.value = meses.includes(atual) ? atual : '';
 }
-
 function popularSeletorTecnico() {
   const select = document.getElementById('filtro-tecnico');
   if (!select) return;
-  const nomes = [...new Set(TICKETS_BASE.flatMap(t => t.tecnicos))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const valorAtual = select.value;
-  select.innerHTML = `<option value="">Todos os técnicos</option>` +
-    `<option value="__sem__">— Sem técnico atribuído —</option>` +
+  const nomes = Array.from(new Set(TICKETS_BASE.flatMap(t => t.tecnicos))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const atual = select.value;
+  select.innerHTML = `<option value="">Todos os técnicos</option><option value="__sem__">— Sem técnico atribuído —</option>` +
     nomes.map(n => `<option value="${n}">${n}</option>`).join('');
-  select.value = (valorAtual === '__sem__' || nomes.includes(valorAtual)) ? valorAtual : '';
+  select.value = (atual === '__sem__' || nomes.includes(atual)) ? atual : '';
+}
+
+function ticketAtivoNoMes(t, ano, mesNum) {
+  const inicioMes = new Date(ano, mesNum - 1, 1, 0, 0, 0);
+  const fimMes = new Date(ano, mesNum, 0, 23, 59, 59);
+  const abertura = parseDateBR(t.abertura);
+  if (!abertura || abertura > fimMes) return false;
+  const emAndamento = ehEmAtendimento(t.status) || t.status === 'Pendente' || t.status === 'Novo';
+  if (emAndamento) return true;
+  if (t.fechamento) {
+    const f = parseDateBR(t.fechamento);
+    if (f) return f >= inicioMes;
+  }
+  return mesDaAbertura(t.abertura) === String(mesNum).padStart(2, '0');
 }
 
 function aplicarFiltroMes() {
-  TICKETS = mesSelecionado ? TICKETS_BASE.filter(t => mesDaAbertura(t.abertura) === mesSelecionado) : TICKETS_BASE;
+  if (!mesSelecionado) {
+    TICKETS = TICKETS_BASE;
+  } else {
+    const m = parseInt(mesSelecionado, 10);
+    TICKETS = TICKETS_BASE.filter(t => ticketAtivoNoMes(t, REGRAS.ano_considerado, m));
+  }
   initAll();
 
-  const subtitulo = document.querySelector('.subtitle');
-  if (subtitulo) {
-    const rotuloMes = mesSelecionado ? `${NOMES_MES[parseInt(mesSelecionado, 10) - 1]}/${REGRAS.ano_considerado}` : REGRAS.ano_considerado;
-    subtitulo.textContent = `Chamados de ${rotuloMes} — setores Financeiro, CSC e Manutenção`;
+  const sub = document.querySelector('.subtitle');
+  if (sub) {
+    const rot = mesSelecionado ? NOMES_MES[parseInt(mesSelecionado, 10) - 1] + '/' + REGRAS.ano_considerado : REGRAS.ano_considerado;
+    sub.textContent = `Chamados ativos em ${rot} — Compras, Frotas, Viagens, VExpenses e Manutenção`;
+  }
+  const span = document.getElementById('abertos-no-mes');
+  if (span) {
+    if (mesSelecionado) {
+      const n = TICKETS_BASE.filter(t => mesDaAbertura(t.abertura) === mesSelecionado).length;
+      span.textContent = `· ${n} aberto${n === 1 ? '' : 's'} nesse mês`;
+    } else span.textContent = '';
   }
 }
 
+function calcularSugestaoFilial(chamados) {
+  const cont = {};
+  chamados.forEach(t => {
+    t.tecnicos.forEach(tec => {
+      (cont[t.entidade] ||= {});
+      cont[t.entidade][tec] = (cont[t.entidade][tec] || 0) + 1;
+    });
+  });
+  const sug = {};
+  Object.keys(cont).forEach(fil => {
+    let melhor = null, max = -1;
+    Object.entries(cont[fil]).forEach(([tec, n]) => { if (n > max) { max = n; melhor = tec; } });
+    if (melhor) sug[fil] = melhor;
+  });
+  return sug;
+}
+
+// ----------------------------------------------------------------------
+// BARRA DE FILTRO / ESTADO ATIVO
+// ----------------------------------------------------------------------
 function updateActiveClasses() {
   document.querySelectorAll('.kpi[data-status]').forEach(el => {
     const st = el.dataset.status;
-    el.classList.toggle('active', st === '__all__' ? !activeStatus : activeStatus === st);
+    el.classList.toggle('active', st === '__all__' ? activeStatus === '__all__' : activeStatus === st);
   });
-  document.querySelectorAll('.sla-kpi[data-sla]').forEach(el => {
-    el.classList.toggle('active', activeSla === el.dataset.sla);
-  });
+  document.querySelectorAll('.sla-kpi[data-sla]').forEach(el => el.classList.toggle('active', activeSla === el.dataset.sla));
   document.getElementById('kpi-sem-tecnico-card')?.classList.toggle('active', activeAtribuicao === 'sem_tecnico');
-  document.querySelectorAll('.cat-card[data-setor]').forEach(el => {
-    el.classList.toggle('active', activeSetor === el.dataset.setor);
-  });
+  document.querySelectorAll('.cat-card[data-cat]').forEach(el => el.classList.toggle('active', activeCat === el.dataset.cat));
 }
 
 function updateFilterBar() {
   const bar = document.getElementById('filter-bar');
-  const algumFiltro = activeStatus || activeSetor || activeSla || activeAtribuicao || activeTecnico;
-  bar?.classList.toggle('show', !!algumFiltro);
+  const any = activeCat || (activeStatus && activeStatus !== '__all__') || activeSla || activeAtribuicao || activeTecnico;
+  bar?.classList.toggle('show', !!any || activeStatus === '__all__');
 
-  const chipCat = document.getElementById('chip-cat');
-  if (chipCat) { chipCat.style.display = activeSetor ? 'inline-block' : 'none'; chipCat.textContent = activeSetor || ''; }
-
-  const chipStatus = document.getElementById('chip-status');
-  if (chipStatus) { chipStatus.style.display = activeStatus ? 'inline-block' : 'none'; chipStatus.textContent = activeStatus ? (STATUS_LABEL[activeStatus] || activeStatus) : ''; }
-
-  const chipSla = document.getElementById('chip-sla');
-  if (chipSla) { chipSla.style.display = activeSla ? 'inline-block' : 'none'; chipSla.textContent = activeSla ? SLA_LABEL[activeSla] : ''; }
-
-  const chipAtrib = document.getElementById('chip-atrib');
-  if (chipAtrib) { chipAtrib.style.display = activeAtribuicao ? 'inline-block' : 'none'; chipAtrib.textContent = activeAtribuicao === 'sem_tecnico' ? 'Sem técnico' : ''; }
-
-  const chipTec = document.getElementById('chip-tec');
-  if (chipTec) {
-    chipTec.style.display = activeTecnico ? 'inline-block' : 'none';
-    chipTec.textContent = activeTecnico === '__sem__' ? 'Sem técnico' : (activeTecnico || '');
-  }
-
+  const chip = (id, show, txt) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = show ? 'inline-block' : 'none';
+    el.textContent = show ? txt : '';
+  };
+  chip('chip-cat', !!activeCat, activeCat || '');
+  chip('chip-status', activeStatus && activeStatus !== '__all__', activeStatus ? (STATUS_LABEL[activeStatus] || activeStatus) : '');
+  chip('chip-sla', !!activeSla, activeSla ? SLA_LABEL[activeSla] : '');
+  chip('chip-atrib', activeAtribuicao === 'sem_tecnico', 'Sem técnico');
+  chip('chip-tec', !!activeTecnico, activeTecnico === '__sem__' ? 'Sem técnico' : (activeTecnico || ''));
   updateActiveClasses();
 }
 
-function refreshFilteredViews() {
-  render();
-  renderSetorCards();
-  renderSetorSection();
-  updateFilterBar();
-}
-
 // ----------------------------------------------------------------------
-// INICIALIZAÇÃO GERAL
+// INICIALIZAÇÃO
 // ----------------------------------------------------------------------
 function initAll() {
   renderKpiNumbers();
   renderCategoryCards();
-  renderSetorCards();
-  renderSetorSection();
+  renderUnidadeCards();
+  renderUnidadeSection();
   renderQueues();
   render();
-  updateFilterBar();
 }
 
 async function carregarDadosDaAPI() {
@@ -665,18 +831,20 @@ async function carregarDadosDaAPI() {
   const syncEl = document.getElementById('dados-sync-texto');
   try {
     if (syncEl) syncEl.textContent = 'Sincronizando...';
+    const headers = API_KEY ? { 'X-API-Key': API_KEY } : {};
+    const resp = await fetch(`${API_BASE}/api/chamados`, { headers });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const brutos = await resp.json();
 
-    const resposta = await fetch(`${API_BASE}/api/chamados`);
-    if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
-    const chamados = await resposta.json();
-
-    TICKETS_BASE = mapearChamados(chamados).filter(t => REGRAS.status_considerados.includes(t.status));
+    const todos = mapearChamados(brutos);
+    TICKETS_BASE = todos.filter(t => REGRAS.status_considerados.includes(t.status));
+    BRANCH_SUGGESTION = calcularSugestaoFilial(todos);
     popularSeletorMes();
     popularSeletorTecnico();
     aplicarFiltroMes();
 
     const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    if (textoEl) textoEl.textContent = `${chamados.length} chamados recebidos da API · ${TICKETS_BASE.length} no painel · atualizado às ${agora}`;
+    if (textoEl) textoEl.textContent = `${brutos.length} chamados da API · ${TICKETS_BASE.length} no painel · atualizado às ${agora}`;
     if (syncEl) syncEl.textContent = 'Conectado à API';
   } catch (erro) {
     console.error('Erro ao carregar dados da API:', erro);
@@ -685,100 +853,62 @@ async function carregarDadosDaAPI() {
   }
 }
 
-function tickClock() {
-  const now = new Date();
-  const clockEl = document.getElementById('clock');
-  const dateEl = document.getElementById('dateline');
-  if (clockEl) clockEl.textContent = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  if (dateEl) dateEl.textContent = now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase();
-}
-
+// ----------------------------------------------------------------------
+// EVENTOS
+// ----------------------------------------------------------------------
 function bindStaticEvents() {
-  document.querySelectorAll('.kpi[data-status]').forEach(el => {
-    el.addEventListener('click', () => {
-      const st = el.dataset.status;
-      activeStatus = st === '__all__' ? null : (activeStatus === st ? null : st);
-      refreshFilteredViews();
+  document.querySelectorAll('.kpi[data-status]').forEach(kpi => {
+    kpi.addEventListener('click', () => {
+      const s = kpi.dataset.status;
+      activeStatus = (activeStatus === s) ? null : s;
+      render();
+      document.getElementById('sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
-
-  document.querySelectorAll('.sla-kpi[data-sla]').forEach(el => {
-    el.addEventListener('click', () => {
-      const s = el.dataset.sla;
-      activeSla = activeSla === s ? null : s;
-      refreshFilteredViews();
+  document.querySelectorAll('.sla-kpi[data-sla]').forEach(kpi => {
+    kpi.addEventListener('click', () => {
+      const s = kpi.dataset.sla;
+      activeSla = (activeSla === s) ? null : s;
+      render();
     });
   });
-
   document.getElementById('kpi-sem-tecnico-card')?.addEventListener('click', () => {
     activeAtribuicao = activeAtribuicao === 'sem_tecnico' ? null : 'sem_tecnico';
-    refreshFilteredViews();
+    render();
     document.getElementById('sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
-
-  document.getElementById('category-grid')?.addEventListener('click', e => {
-    const card = e.target.closest('.cat-card[data-setor]');
-    if (!card) return;
-    const setor = card.dataset.setor;
-    activeSetor = activeSetor === setor ? null : setor;
-    refreshFilteredViews();
-  });
-
   document.getElementById('clear-filters')?.addEventListener('click', () => {
-    activeStatus = activeSetor = activeSla = activeAtribuicao = activeTecnico = null;
+    activeCat = activeStatus = activeSla = activeAtribuicao = activeTecnico = null;
     const selTec = document.getElementById('filtro-tecnico');
     if (selTec) selTec.value = '';
-    refreshFilteredViews();
-  });
-
-  ['sections', 'unidade-sections'].forEach(id => {
-    document.getElementById(id)?.addEventListener('click', e => {
-      const th = e.target.closest('th[data-field]');
-      if (th) {
-        const f = th.dataset.field;
-        sortDir = sortField === f ? sortDir * -1 : 1;
-        sortField = f;
-        render();
-        renderSetorSection();
-        return;
-      }
-      const tr = e.target.closest('tbody tr[data-id]');
-      if (tr) {
-        const t = TICKETS.find(x => x.id === tr.dataset.id);
-        if (t) openModal(t);
-      }
-    });
+    render();
   });
 
   document.querySelectorAll('.view-tabs button[data-view]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.view-tabs button').forEach(b => b.classList.remove('on'));
-      btn.classList.add('on');
       document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
-      document.getElementById(`view-${btn.dataset.view}`)?.classList.add('on');
+      btn.classList.add('on');
+      document.getElementById('view-' + btn.dataset.view)?.classList.add('on');
     });
   });
 
   document.getElementById('modal-close')?.addEventListener('click', closeModal);
-  document.getElementById('overlay')?.addEventListener('click', e => {
-    if (e.target.id === 'overlay') closeModal();
-  });
+  document.getElementById('overlay')?.addEventListener('click', e => { if (e.target.id === 'overlay') closeModal(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
   document.getElementById('filtro-mes')?.addEventListener('change', e => {
     mesSelecionado = e.target.value;
     aplicarFiltroMes();
   });
-
   document.getElementById('filtro-tecnico')?.addEventListener('change', e => {
     activeTecnico = e.target.value || null;
-    refreshFilteredViews();
+    render();
   });
 }
 
 bindStaticEvents();
-tickClock();
-setInterval(tickClock, 1000);
-
+updateClock();
+setInterval(updateClock, 30000);
 carregarDadosDaAPI();
 setInterval(carregarDadosDaAPI, 5 * 60 * 1000);

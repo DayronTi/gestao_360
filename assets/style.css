@@ -93,6 +93,24 @@ background:var(--cat-color); margin-right:8px; vertical-align:middle; box-shadow
 .cat-legend{ display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:8px; font-family:var(--mono); font-size:10px; color:var(--text-dim); line-height:1.6; }
 .cat-legend b{ color:var(--text); font-weight:600; }
 
+/* ---------- SLA breakdown (nos cards e nas filas) ---------- */
+.cat-sla-breakdown{ margin-top:10px; padding-top:8px; border-top:1px solid var(--line); }
+.cat-sla-row{ display:flex; align-items:center; justify-content:space-between; gap:6px; font-family:var(--mono); font-size:10px; color:var(--text-dim); margin-top:6px; text-transform:uppercase; letter-spacing:.03em; }
+.cat-sla-subrow{ display:flex; align-items:center; justify-content:space-between; gap:6px; font-family:var(--mono); font-size:10px; color:var(--text-dim); margin-top:2px; padding-left:8px; }
+.cat-sla-subrow .rotulo-base{ color:var(--text-dim); opacity:.75; font-size:9.5px; }
+.cat-sla-row .rotulo{ white-space:nowrap; }
+.cat-sla-row .contagens, .cat-sla-subrow .contagens{ display:flex; gap:7px; }
+.cat-sla-row .contagens span, .cat-sla-subrow .contagens span{ display:inline-flex; align-items:center; gap:2px; }
+.cat-sla-row .pt, .cat-sla-subrow .pt{ width:6px; height:6px; border-radius:50%; display:inline-block; }
+
+.sla-row-label{ font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim); margin:14px 0 8px; }
+.sla-strip-glpi{ margin-bottom:18px; }
+.sla-strip-glpi .sla-kpi{ cursor:default; opacity:.88; }
+.sla-strip-glpi .sla-kpi:hover{ transform:none; background:var(--panel); }
+.sla-badge-linha{ display:flex; align-items:center; gap:8px; margin-top:3px; flex-wrap:wrap; }
+.sla-legend-mini{ display:flex; gap:14px; margin:10px 0 4px; font-family:var(--mono); font-size:10.5px; color:var(--text-dim); flex-wrap:wrap; }
+.sla-legend-mini .pt{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; }
+
 /* ---------- ACTIVE FILTER BAR ---------- */
 .filter-bar{
 display:none; align-items:center; gap:10px; margin:18px 0 6px;

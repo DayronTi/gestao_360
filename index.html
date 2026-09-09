@@ -13,7 +13,7 @@
   <div>
     <p class="brand-eyebrow">Grupo Logos · Central de Chamados</p>
     <h1>Gestão à Vista 360</h1>
-    <p class="subtitle">Chamados de 2026 — setores Financeiro, CSC e Manutenção</p>
+    <p class="subtitle">Chamados de 2026 — Compras, Frotas, Viagens, VExpenses e Manutenção</p>
   </div>
   <div class="board-clock">
     <div class="big" id="clock">--:--</div>
@@ -55,16 +55,17 @@
 </div>
 
 <div class="hint" style="border-color:var(--st-solved); color:#a9dcc0; margin-top:14px;">
-  Para chamados já Solucionados/Fechados, o SLA compara o prazo com a data real de fechamento (não com hoje) — mostra se foi resolvido no prazo ou com atraso. Para chamados ainda em atendimento/pendentes, compara com a data de hoje.
+  Duas leituras de SLA lado a lado: <b>Política</b> (Cotação + Aprovação por prioridade, em horas ou dias úteis) e <b>GLPI</b> (prazo que o próprio sistema calcula). Para chamados já Solucionados/Fechados, cada um compara com a data real de fechamento; para os ainda em atendimento, compara com agora. Pendente não entra na conta (aguardando o solicitante).
 </div>
 
+<div class="sla-row-label">SLA — Política (Cotação + Aprovação)</div>
 <div class="sla-strip">
   <div class="sla-kpi ok" data-sla="ok">
     <div class="label">No prazo</div>
     <div class="value" id="sla-ok">0</div>
   </div>
   <div class="sla-kpi warn" data-sla="warn">
-    <div class="label">Quase vencendo (≤48h)</div>
+    <div class="label">Quase vencendo</div>
     <div class="value" id="sla-warn">0</div>
   </div>
   <div class="sla-kpi crit" data-sla="crit">
@@ -77,6 +78,26 @@
   </div>
 </div>
 
+<div class="sla-row-label">SLA — GLPI (prazo do sistema)</div>
+<div class="sla-strip sla-strip-glpi">
+  <div class="sla-kpi ok">
+    <div class="label">No prazo</div>
+    <div class="value" id="sla-ok-glpi">0</div>
+  </div>
+  <div class="sla-kpi warn">
+    <div class="label">Quase vencendo (≤48h)</div>
+    <div class="value" id="sla-warn-glpi">0</div>
+  </div>
+  <div class="sla-kpi crit">
+    <div class="label">Vencido</div>
+    <div class="value" id="sla-crit-glpi">0</div>
+  </div>
+  <div class="sla-kpi paused">
+    <div class="label">Pausado (aguardando)</div>
+    <div class="value" id="sla-paused-glpi">0</div>
+  </div>
+</div>
+
 <div class="atrib-mes-row">
   <div class="sla-kpi crit" id="kpi-sem-tecnico-card" style="max-width:280px;">
     <div class="label">Sem técnico atribuído <span class="tap">clique p/ ver</span></div>
@@ -85,6 +106,7 @@
   <div class="mes-picker">
     <label for="filtro-mes">Ver o mês:</label>
     <select id="filtro-mes"><option value="">Todos os meses de 2026</option></select>
+    <span id="abertos-no-mes" style="color:var(--amber);"></span>
   </div>
   <div class="mes-picker">
     <label for="filtro-tecnico">Técnico:</label>
@@ -92,6 +114,13 @@
   </div>
 </div>
 
+<div class="sla-legend-mini">
+  <span><span class="pt" style="background:#4fae7a;"></span>No prazo</span>
+  <span><span class="pt" style="background:var(--st-atend);"></span>Quase vencendo</span>
+  <span><span class="pt" style="background:var(--st-pend);"></span>Vencido</span>
+  <span><span class="pt" style="background:#6b7684;"></span>Pausado</span>
+  <span style="margin-left:auto">Quebra de SLA por status — nos cards de categoria e nas filas por técnico</span>
+</div>
 <div class="category-grid" id="category-grid"></div>
 
 <div class="filter-bar" id="filter-bar">
@@ -106,7 +135,7 @@
 
 <div class="view-tabs">
   <button class="on" data-view="categoria">Por categoria</button>
-  <button data-view="unidade">Por setor</button>
+  <button data-view="unidade">Por unidade</button>
   <button data-view="tecnico">Fila por técnico</button>
 </div>
 
@@ -130,7 +159,7 @@
 
   <div class="section-head" style="margin-top:30px;">
     <h2 style="color:var(--st-pend)"><span class="dot" style="background:var(--st-pend)"></span>Sem técnico — precisa de atribuição</h2>
-    <span class="section-count">agrupado por setor</span>
+    <span class="section-count">agrupado por unidade, com o técnico que costuma atender</span>
   </div>
   <div class="queue-grid" id="unassigned-grid"></div>
 </div>
