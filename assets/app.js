@@ -839,6 +839,16 @@ async function carregarDadosDaAPI() {
     const todos = mapearChamados(brutos);
     TICKETS_BASE = todos.filter(t => REGRAS.status_considerados.includes(t.status));
     BRANCH_SUGGESTION = calcularSugestaoFilial(todos);
+
+    // ano dominante nos dados — mantém rótulos e filtro de mês sempre atuais
+    // mesmo quando a janela dos "últimos 1000" entrar no ano seguinte.
+    const contAno = {};
+    TICKETS_BASE.forEach(t => {
+      const y = (t.abertura || '').split('-')[2];
+      if (y) contAno[y] = (contAno[y] || 0) + 1;
+    });
+    const anoDom = Object.keys(contAno).sort((a, b) => contAno[b] - contAno[a])[0];
+    if (anoDom) REGRAS.ano_considerado = Number(anoDom);
     popularSeletorMes();
     popularSeletorTecnico();
     aplicarFiltroMes();
