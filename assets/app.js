@@ -1,7 +1,7 @@
 // ----------------------------------------------------------------------
 // CONEXÃO COM A API
 // ----------------------------------------------------------------------
-const API_BASE = 'http://170.244.117.121:5000';
+const API_BASE = 'https://gestao-csc.logos-ma.com.br:5000';
 
 // Chave da API (header X-API-Key). Deixe '' se a API não exigir.
 // Também aceita ?key=... na URL (guarda no navegador — útil p/ TV/telão).
