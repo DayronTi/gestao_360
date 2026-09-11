@@ -3,16 +3,8 @@
 // ----------------------------------------------------------------------
 const API_BASE = 'https://gestao-csc.logos-ma.com.br:5000';
 
-// Chave da API (header X-API-Key). Deixe '' se a API não exigir.
-// Também aceita ?key=... na URL (guarda no navegador — útil p/ TV/telão).
-const API_KEY = (() => {
-  try {
-    const u = new URL(location.href);
-    const k = u.searchParams.get('key');
-    if (k) { localStorage.setItem('painel360_api_key', k); return k; }
-    return localStorage.getItem('painel360_api_key') || '';
-  } catch (e) { return ''; }
-})();
+// Chave da API (header X-API-Key), fixa no código.
+const API_KEY = 'a3f9c8e21b4d67f0912e5a8c3d4b6789f0e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5';
 
 // ----------------------------------------------------------------------
 // REGRAS DE NEGÓCIO (o filtro de escopo/categoria fica na API agora)
