@@ -72,6 +72,9 @@ let activeTecnico = null;
 let sortState = {};
 let activeUnidade = null;
 let sortStateUnidade = {};
+let PAGE_SIZE = 50;
+let PAGE_STATE = {};
+let autoRefreshTimer = null;
 
 // ----------------------------------------------------------------------
 // HELPERS DE DATA
@@ -337,7 +340,7 @@ function tecnicoCell(t) {
     (sug ? `<br><small style="color:var(--text-dim)">sugestão: ${sug}</small>` : '');
 }
 
-function renderTable(items, sortKey, sortDir) {
+function renderTable(items, sortKey, sortDir, pageKey) {
   const sorted = [...items];
   if (sortKey) {
     sorted.sort((a, b) => {
@@ -359,7 +362,17 @@ function renderTable(items, sortKey, sortDir) {
       return 0;
     });
   }
-  const rows = sorted.map(t => `
+
+  const totalItems = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  let page = PAGE_STATE[pageKey] || 1;
+  if (page > totalPages) page = totalPages;
+  if (page < 1) page = 1;
+  PAGE_STATE[pageKey] = page;
+  const start = (page - 1) * PAGE_SIZE;
+  const pageItems = sorted.slice(start, start + PAGE_SIZE);
+
+  const rows = pageItems.map(t => `
     <tr data-id="${t.id}">
       <td class="id">#${t.id}</td>
       <td class="assunto">${t.assunto}<small>${t.solicitante || ''}</small></td>
@@ -370,6 +383,13 @@ function renderTable(items, sortKey, sortDir) {
       <td>${slaBadgeHtml(t)}</td>
       <td style="font-family:var(--mono);white-space:nowrap;color:var(--text-dim);">${t.abertura || '—'}</td>
     </tr>`).join('');
+
+  const pagination = totalPages > 1 ? `
+    <div class="table-pagination">
+      <button type="button" data-page-action="prev" ${page <= 1 ? 'disabled' : ''}>‹ Anterior</button>
+      <span>Página ${page} de ${totalPages} · ${totalItems} chamado${totalItems === 1 ? '' : 's'}</span>
+      <button type="button" data-page-action="next" ${page >= totalPages ? 'disabled' : ''}>Próximo ›</button>
+    </div>` : '';
 
   return `
     <table>
@@ -384,7 +404,8 @@ function renderTable(items, sortKey, sortDir) {
         <th data-key="abertura">Abertura</th>
       </tr></thead>
       <tbody>${rows || `<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">Nenhum chamado</td></tr>`}</tbody>
-    </table>`;
+    </table>
+    ${pagination}`;
 }
 
 // ----------------------------------------------------------------------
@@ -421,19 +442,28 @@ function render() {
     const section = document.createElement('div');
     section.className = 'section';
     const st = sortState[cat.key] || { key: null, dir: 'asc' };
+    const pageKey = 'cat_' + cat.key;
     section.innerHTML = `
       <div class="section-head">
         <h2 style="color:${cat.hex}"><span class="dot" style="background:${cat.hex}"></span>${cat.key}</h2>
         <span class="section-count">${items.length} chamado${items.length === 1 ? '' : 's'}${anyFilter ? ' com esse filtro' : ' no período'}</span>
       </div>
-      ${items.length ? renderTable(items, st.key, st.dir) : `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado ${anyFilter ? 'com esse filtro' : 'nesse período'}</div>`}`;
+      ${items.length ? renderTable(items, st.key, st.dir, pageKey) : `<div class="empty-flap"><span class="zero">00</span>Nenhum chamado ${anyFilter ? 'com esse filtro' : 'nesse período'}</div>`}`;
 
     section.addEventListener('click', (e) => {
+      const pageBtn = e.target.closest('[data-page-action]');
+      if (pageBtn) {
+        const cur = PAGE_STATE[pageKey] || 1;
+        PAGE_STATE[pageKey] = pageBtn.dataset.pageAction === 'next' ? cur + 1 : cur - 1;
+        render();
+        return;
+      }
       const th = e.target.closest('th[data-key]');
       if (th) {
         const key = th.dataset.key;
         const cur = sortState[cat.key] || { key: null, dir: 'asc' };
         sortState[cat.key] = { key, dir: (cur.key === key && cur.dir === 'asc') ? 'desc' : 'asc' };
+        PAGE_STATE[pageKey] = 1;
         render();
         return;
       }
@@ -513,6 +543,7 @@ function renderUnidadeSection() {
   CATS.forEach(cat => {
     const items = itemsUnidade.filter(t => t.categoria === cat.key);
     const chave = activeUnidade + '|' + cat.key;
+    const pageKey = 'uni_' + chave;
     const st = sortStateUnidade[chave] || { key: null, dir: 'asc' };
     const bloco = document.createElement('div');
     bloco.style.marginTop = '18px';
@@ -521,7 +552,7 @@ function renderUnidadeSection() {
         <h2 style="font-size:14px; color:${cat.hex}"><span class="dot" style="background:${cat.hex}"></span>${cat.key}</h2>
         <span class="section-count">${items.length} chamado${items.length === 1 ? '' : 's'}</span>
       </div>
-      ${items.length ? renderTable(items, st.key, st.dir) : `<div class="empty-flap" style="padding:18px;">Nenhum chamado dessa categoria</div>`}`;
+      ${items.length ? renderTable(items, st.key, st.dir, pageKey) : `<div class="empty-flap" style="padding:18px;">Nenhum chamado dessa categoria</div>`}`;
     root.appendChild(bloco);
 
     if (items.length) {
@@ -530,12 +561,20 @@ function renderUnidadeSection() {
         if (!th) return;
         const cur = sortStateUnidade[chave] || { key: null, dir: 'asc' };
         sortStateUnidade[chave] = { key: th.dataset.key, dir: (cur.key === th.dataset.key && cur.dir === 'asc') ? 'desc' : 'asc' };
+        PAGE_STATE[pageKey] = 1;
         renderUnidadeSection();
       });
       bloco.querySelectorAll('table tbody tr').forEach(tr => {
         tr.addEventListener('click', () => {
           const tk = items.find(x => x.id === tr.dataset.id);
           if (tk) openModal(tk);
+        });
+      });
+      bloco.querySelectorAll('[data-page-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const cur = PAGE_STATE[pageKey] || 1;
+          PAGE_STATE[pageKey] = btn.dataset.pageAction === 'next' ? cur + 1 : cur - 1;
+          renderUnidadeSection();
         });
       });
     }
@@ -836,11 +875,13 @@ async function carregarDadosDaAPI() {
     // mesmo quando a janela dos "últimos 1000" entrar no ano seguinte.
     const contAno = {};
     TICKETS_BASE.forEach(t => {
-      const y = (t.abertura || '').split('-')[2];
+      const dataPart = (t.abertura || '').split(' ')[0];
+      const y = dataPart.split('-')[2];
       if (y) contAno[y] = (contAno[y] || 0) + 1;
     });
     const anoDom = Object.keys(contAno).sort((a, b) => contAno[b] - contAno[a])[0];
-    if (anoDom) REGRAS.ano_considerado = Number(anoDom);
+    const anoDomNum = Number(anoDom);
+    if (anoDom && !isNaN(anoDomNum)) REGRAS.ano_considerado = anoDomNum;
     popularSeletorMes();
     popularSeletorTecnico();
     aplicarFiltroMes();
@@ -907,10 +948,21 @@ function bindStaticEvents() {
     activeTecnico = e.target.value || null;
     render();
   });
+  document.getElementById('filtro-tamanho-pagina')?.addEventListener('change', e => {
+    PAGE_SIZE = Number(e.target.value) || 50;
+    PAGE_STATE = {};
+    render();
+    renderUnidadeSection();
+  });
+  document.getElementById('filtro-intervalo')?.addEventListener('change', e => {
+    const ms = Number(e.target.value) || 5 * 60 * 1000;
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(carregarDadosDaAPI, ms);
+  });
 }
 
 bindStaticEvents();
 updateClock();
 setInterval(updateClock, 30000);
 carregarDadosDaAPI();
-setInterval(carregarDadosDaAPI, 5 * 60 * 1000);
+autoRefreshTimer = setInterval(carregarDadosDaAPI, 5 * 60 * 1000);

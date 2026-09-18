@@ -25,6 +25,13 @@
 <div class="hint" id="dados-atualizados" style="color:var(--amber); border-color:var(--amber); display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
   <span id="dados-atualizados-texto">Carregando...</span>
   <span style="display:flex; align-items:center; gap:8px;">
+    <label for="filtro-intervalo" style="color:var(--text-dim);">Atualizar a cada:</label>
+    <select id="filtro-intervalo">
+      <option value="300000" selected>5 min</option>
+      <option value="600000">10 min</option>
+      <option value="1800000">30 min</option>
+      <option value="3600000">1 hora</option>
+    </select>
   </span>
   <span id="dados-sync-texto">
       Sincronizando...
@@ -111,6 +118,15 @@
   <div class="mes-picker">
     <label for="filtro-tecnico">Técnico:</label>
     <select id="filtro-tecnico"><option value="">Todos os técnicos</option></select>
+  </div>
+  <div class="mes-picker">
+    <label for="filtro-tamanho-pagina">Registros por página:</label>
+    <select id="filtro-tamanho-pagina">
+      <option value="5">5 registros</option>
+      <option value="10">10 registros</option>
+      <option value="50" selected>50 registros</option>
+      <option value="100">100 registros</option>
+    </select>
   </div>
 </div>
 
