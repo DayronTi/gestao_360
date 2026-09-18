@@ -737,17 +737,40 @@ function closeModal() { document.getElementById('overlay')?.classList.remove('sh
 // ----------------------------------------------------------------------
 // FILTRO DE MÊS  (ativo no mês) + FILTRO DE TÉCNICO + barra de chips
 // ----------------------------------------------------------------------
+// Retorna "AAAA-MM" (ano+mês), não só "MM": a janela dos "últimos 1000"
+// chamados já cobre mais de 1 ano, então só o mês seria ambíguo (Março/2025
+// vs Março/2026) — ver ticketAtivoNoMes() e popularSeletorMes() abaixo.
 function mesDaAbertura(s) {
-  try { return s.trim().split(' ')[0].split('-')[1]; } catch (e) { return null; }
+  if (!s) return null;
+  try {
+    const dataPart = s.trim().split(' ')[0];
+    const [, mes, ano] = dataPart.split('-');
+    return ano && mes ? `${ano}-${mes}` : null;
+  } catch (e) { return null; }
 }
+
+// Rótulo do "ano" p/ quando nenhum mês está selecionado — vira um intervalo
+// (ex.: "2025–2026") se os dados cobrirem mais de um ano.
+function rotuloPeriodoTodos() {
+  const anos = [...new Set(TICKETS_BASE.map(t => {
+    const d = parseDateBR(t.abertura);
+    return d ? d.getFullYear() : null;
+  }).filter(Boolean))].sort();
+  if (!anos.length) return REGRAS.ano_considerado;
+  return anos.length > 1 ? `${anos[0]}–${anos[anos.length - 1]}` : anos[0];
+}
+
 function popularSeletorMes() {
   const select = document.getElementById('filtro-mes');
   if (!select) return;
-  const meses = Array.from(new Set(TICKETS_BASE.map(t => mesDaAbertura(t.abertura)))).filter(Boolean).sort();
+  const chaves = Array.from(new Set(TICKETS_BASE.map(t => mesDaAbertura(t.abertura)))).filter(Boolean).sort();
   const atual = select.value;
-  select.innerHTML = `<option value="">Todos os meses de ${REGRAS.ano_considerado}</option>` +
-    meses.map(m => `<option value="${m}">${NOMES_MES[parseInt(m, 10) - 1]}</option>`).join('');
-  select.value = meses.includes(atual) ? atual : '';
+  select.innerHTML = `<option value="">Todos os meses (${rotuloPeriodoTodos()})</option>` +
+    chaves.map(c => {
+      const [ano, mes] = c.split('-');
+      return `<option value="${c}">${NOMES_MES[parseInt(mes, 10) - 1]} / ${ano}</option>`;
+    }).join('');
+  select.value = chaves.includes(atual) ? atual : '';
 }
 function popularSeletorTecnico() {
   const select = document.getElementById('filtro-tecnico');
@@ -770,21 +793,32 @@ function ticketAtivoNoMes(t, ano, mesNum) {
     const f = parseDateBR(t.fechamento);
     if (f) return f >= inicioMes;
   }
-  return mesDaAbertura(t.abertura) === String(mesNum).padStart(2, '0');
+  // Sem data de fechamento registrada: só conta no mês E ANO exatos de
+  // abertura. Antes comparava só o número do mês (sem checar o ano) — um
+  // chamado de março/2025 sem "Data de fechamento" "vazava" pra março/2026
+  // quando a base passou a cobrir mais de um ano. Corrigido comparando o ano
+  // também.
+  return abertura.getFullYear() === ano && (abertura.getMonth() + 1) === mesNum;
 }
 
 function aplicarFiltroMes() {
+  let ano = null, mesNum = null;
+  if (mesSelecionado) {
+    const [anoStr, mesStr] = mesSelecionado.split('-');
+    ano = parseInt(anoStr, 10);
+    mesNum = parseInt(mesStr, 10);
+  }
+
   if (!mesSelecionado) {
     TICKETS = TICKETS_BASE;
   } else {
-    const m = parseInt(mesSelecionado, 10);
-    TICKETS = TICKETS_BASE.filter(t => ticketAtivoNoMes(t, REGRAS.ano_considerado, m));
+    TICKETS = TICKETS_BASE.filter(t => ticketAtivoNoMes(t, ano, mesNum));
   }
   initAll();
 
   const sub = document.querySelector('.subtitle');
   if (sub) {
-    const rot = mesSelecionado ? NOMES_MES[parseInt(mesSelecionado, 10) - 1] + '/' + REGRAS.ano_considerado : REGRAS.ano_considerado;
+    const rot = mesSelecionado ? `${NOMES_MES[mesNum - 1]}/${ano}` : rotuloPeriodoTodos();
     sub.textContent = `Chamados ativos em ${rot} — Compras, Frotas, Viagens, VExpenses e Manutenção`;
   }
   const span = document.getElementById('abertos-no-mes');
