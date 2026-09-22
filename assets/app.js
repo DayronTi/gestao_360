@@ -69,6 +69,7 @@ let activeStatus = null;
 let activeSla = null;
 let activeAtribuicao = null;
 let activeTecnico = null;
+let TECNICOS_POR_ID = {};   // {id: nome} — usado p/ exibir o chip do filtro e o dropdown
 let sortState = {};
 let activeUnidade = null;
 let sortStateUnidade = {};
@@ -411,16 +412,21 @@ function renderTable(items, sortKey, sortDir, pageKey) {
 // ----------------------------------------------------------------------
 // VISÃO POR CATEGORIA
 // ----------------------------------------------------------------------
+// Filtro de técnico é por ID (t.tecnicosIds), nunca por nome: dois técnicos
+// podem ter o mesmo nome exibido, mas nunca o mesmo ID no GLPI.
+function passaFiltroTecnico(t) {
+  if (!activeTecnico) return true;
+  if (activeTecnico === '__sem__') return t.tecnicos.length === 0;
+  return t.tecnicosIds.includes(activeTecnico);
+}
+
 function filteredItems(catKey) {
   return TICKETS.filter(t => {
     if (t.categoria !== catKey) return false;
     if (activeStatus && activeStatus !== '__all__' && t.status !== activeStatus) return false;
     if (activeSla && slaStatusPolitica(t) !== activeSla) return false;
     if (activeAtribuicao === 'sem_tecnico' && !semTecnicoRelevante(t)) return false;
-    if (activeTecnico) {
-      if (activeTecnico === '__sem__') { if (t.tecnicos.length) return false; }
-      else if (!t.tecnicos.includes(activeTecnico)) return false;
-    }
+    if (!passaFiltroTecnico(t)) return false;
     return true;
   });
 }
@@ -533,7 +539,7 @@ function renderUnidadeSection() {
     root.innerHTML = `<div class="empty-flap"><span class="zero">00</span>Clique numa unidade acima para ver os chamados dela por categoria</div>`;
     return;
   }
-  const itemsUnidade = TICKETS.filter(t => t.entidade === activeUnidade);
+  const itemsUnidade = TICKETS.filter(t => t.entidade === activeUnidade && passaFiltroTecnico(t));
   root.innerHTML = `
     <div class="section-head">
       <h2 style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span>${activeUnidade}</h2>
@@ -603,8 +609,16 @@ function fmtDias(dias) {
 
 function buildQueues() {
   const map = {};
-  TICKETS.forEach(t => {
-    const people = t.tecnicos.length ? t.tecnicos : (STATUS_PRECISA_ATRIBUICAO.includes(t.status) ? ['Não atribuído'] : []);
+  TICKETS.filter(passaFiltroTecnico).forEach(t => {
+    let people;
+    if (activeTecnico && activeTecnico !== '__sem__') {
+      // com um técnico específico selecionado, mostra só a coluna dele —
+      // não a de colegas com quem o chamado também esteja compartilhado.
+      const idx = t.tecnicosIds.indexOf(activeTecnico);
+      people = idx >= 0 ? [t.tecnicos[idx]] : [];
+    } else {
+      people = t.tecnicos.length ? t.tecnicos : (STATUS_PRECISA_ATRIBUICAO.includes(t.status) ? ['Não atribuído'] : []);
+    }
     people.forEach(p => { (map[p] ||= []).push(t); });
   });
   Object.keys(map).forEach(p => {
@@ -772,14 +786,38 @@ function popularSeletorMes() {
     }).join('');
   select.value = chaves.includes(atual) ? atual : '';
 }
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Lista {id, nome, label} únicos por ID (nunca por nome — dois técnicos podem
+// ter o mesmo nome exibido). Quando dois IDs caem no mesmo nome, desambigua
+// o rótulo com o ID para não misturar as pessoas no dropdown/fila.
+function listarTecnicosParaFiltro(baseTickets) {
+  const porId = new Map();
+  baseTickets.forEach(t => {
+    t.tecnicos.forEach((nome, i) => {
+      const id = t.tecnicosIds[i];
+      if (id && !porId.has(id)) porId.set(id, nome);
+    });
+  });
+  const contagemNomes = {};
+  porId.forEach(nome => { contagemNomes[nome] = (contagemNomes[nome] || 0) + 1; });
+  return Array.from(porId.entries())
+    .map(([id, nome]) => ({ id, nome, label: contagemNomes[nome] > 1 ? `${nome} (ID ${id})` : nome }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+}
+
 function popularSeletorTecnico() {
   const select = document.getElementById('filtro-tecnico');
   if (!select) return;
-  const nomes = Array.from(new Set(TICKETS_BASE.flatMap(t => t.tecnicos))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const entradas = listarTecnicosParaFiltro(TICKETS_BASE);
+  TECNICOS_POR_ID = Object.fromEntries(entradas.map(e => [e.id, e.nome]));
   const atual = select.value;
+  const idsValidos = new Set(entradas.map(e => e.id));
   select.innerHTML = `<option value="">Todos os técnicos</option><option value="__sem__">— Sem técnico atribuído —</option>` +
-    nomes.map(n => `<option value="${n}">${n}</option>`).join('');
-  select.value = (atual === '__sem__' || nomes.includes(atual)) ? atual : '';
+    entradas.map(e => `<option value="${e.id}">${escapeHtml(e.label)}</option>`).join('');
+  select.value = (atual === '__sem__' || idsValidos.has(atual)) ? atual : '';
 }
 
 function ticketAtivoNoMes(t, ano, mesNum) {
@@ -875,7 +913,7 @@ function updateFilterBar() {
   chip('chip-status', activeStatus && activeStatus !== '__all__', activeStatus ? (STATUS_LABEL[activeStatus] || activeStatus) : '');
   chip('chip-sla', !!activeSla, activeSla ? SLA_LABEL[activeSla] : '');
   chip('chip-atrib', activeAtribuicao === 'sem_tecnico', 'Sem técnico');
-  chip('chip-tec', !!activeTecnico, activeTecnico === '__sem__' ? 'Sem técnico' : (activeTecnico || ''));
+  chip('chip-tec', !!activeTecnico, activeTecnico === '__sem__' ? 'Sem técnico' : (TECNICOS_POR_ID[activeTecnico] || activeTecnico || ''));
   updateActiveClasses();
 }
 
@@ -958,6 +996,8 @@ function bindStaticEvents() {
     activeCat = activeStatus = activeSla = activeAtribuicao = activeTecnico = null;
     const selTec = document.getElementById('filtro-tecnico');
     if (selTec) selTec.value = '';
+    renderQueues();
+    renderUnidadeSection();
     render();
   });
 
@@ -980,6 +1020,8 @@ function bindStaticEvents() {
   });
   document.getElementById('filtro-tecnico')?.addEventListener('change', e => {
     activeTecnico = e.target.value || null;
+    renderQueues();
+    renderUnidadeSection();
     render();
   });
   document.getElementById('filtro-tamanho-pagina')?.addEventListener('change', e => {
@@ -995,8 +1037,27 @@ function bindStaticEvents() {
   });
 }
 
-bindStaticEvents();
-updateClock();
-setInterval(updateClock, 30000);
-carregarDadosDaAPI();
-autoRefreshTimer = setInterval(carregarDadosDaAPI, 5 * 60 * 1000);
+if (typeof document !== 'undefined') {
+  bindStaticEvents();
+  updateClock();
+  setInterval(updateClock, 30000);
+  carregarDadosDaAPI();
+  autoRefreshTimer = setInterval(carregarDadosDaAPI, 5 * 60 * 1000);
+}
+
+// ----------------------------------------------------------------------
+// EXPORTS (só usados pela bateria de testes em Node; não afetam o browser)
+// ----------------------------------------------------------------------
+export {
+  mapearChamados,
+  passaFiltroTecnico,
+  filteredItems,
+  buildQueues,
+  listarTecnicosParaFiltro,
+};
+export function setTickets(arr) { TICKETS = arr; }
+export function setTicketsBase(arr) { TICKETS_BASE = arr; }
+export function setActiveTecnico(v) { activeTecnico = v; }
+export function setActiveStatus(v) { activeStatus = v; }
+export function setActiveSla(v) { activeSla = v; }
+export function setActiveAtribuicao(v) { activeAtribuicao = v; }
