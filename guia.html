@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Guia do Usuário do Gestão à Vista</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --ground:#f2f4f6; --surface:#ffffff; --surface-2:#e9edf1; --ink:#15202b; --dim:#566474; --line:#d6dde4;
+  --accent:#b87712; --accent-soft:#f6e7cc;
+  --board:#10161d; --board-2:#171f28; --board-line:#2a3644; --board-ink:#eef2f6; --board-dim:#8a97a6;
+  --ok:#2f8a57; --warn:#b87712; --crit:#c2414f; --paused:#6b7684; --novo:#3b7fc4;
+  --ok-soft:#e1f1e7; --warn-soft:#f6e7cc; --crit-soft:#f7e0e3; --paused-soft:#e6e9ed; --novo-soft:#e0ebf7;
+  --compras:#3f9a69; --frotas:#3b7fc4; --viagens:#c7773a; --vexpenses:#8f62c9; --manutencao:#2e9fac;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --cond:"IBM Plex Sans Condensed","Arial Narrow","Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#10161d; --surface:#171f28; --surface-2:#1d2733; --ink:#eef2f6; --dim:#93a0af; --line:#2a3644;
+    --accent:#f2a93b; --accent-soft:#3a2d17;
+    --board:#0b1016; --board-2:#131a22; --board-line:#26313d;
+    --ok:#5cc28a; --warn:#f2a93b; --crit:#ec7784; --paused:#8b96a3; --novo:#6aa6e6;
+    --ok-soft:#173226; --warn-soft:#3a2d17; --crit-soft:#3a1c22; --paused-soft:#222b35; --novo-soft:#172a40;
+    --compras:#4fae7a; --frotas:#4a90d9; --viagens:#d98a4a; --vexpenses:#a879e0; --manutencao:#3fb6c4;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#10161d; --surface:#171f28; --surface-2:#1d2733; --ink:#eef2f6; --dim:#93a0af; --line:#2a3644;
+  --accent:#f2a93b; --accent-soft:#3a2d17;
+  --board:#0b1016; --board-2:#131a22; --board-line:#26313d;
+  --ok:#5cc28a; --warn:#f2a93b; --crit:#ec7784; --paused:#8b96a3; --novo:#6aa6e6;
+  --ok-soft:#173226; --warn-soft:#3a2d17; --crit-soft:#3a1c22; --paused-soft:#222b35; --novo-soft:#172a40;
+  --compras:#4fae7a; --frotas:#4a90d9; --viagens:#d98a4a; --vexpenses:#a879e0; --manutencao:#3fb6c4;
+}
+
+*{box-sizing:border-box}
+body{background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:16.5px; line-height:1.62; margin:0; padding-inline:clamp(16px,4vw,40px);}
+.page{max-width:860px; margin:0 auto; padding-block:44px 80px;}
+.eyebrow{font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim);}
+h1,h2,h3{font-family:var(--cond); text-wrap:balance; line-height:1.15; margin:0;}
+h1{font-size:clamp(34px,5.4vw,50px); font-weight:700; letter-spacing:-.01em; margin-top:10px;}
+h2{font-size:31px; font-weight:600;}
+h3{font-size:21px; font-weight:600; margin-top:30px;}
+p, li{max-width:66ch}
+p{margin:12px 0}
+ul, ol{padding-left:22px} li{margin:5px 0}
+b, strong{font-weight:600}
+a{color:var(--accent)} a:focus-visible, summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.lede{font-size:19px; color:var(--dim); max-width:60ch; margin-top:14px;}
+.k{font-family:var(--mono); font-size:.85em; background:var(--surface-2); padding:1px 7px; border-radius:4px; white-space:nowrap;}
+
+/* navegação em linha */
+.jump{display:flex; flex-wrap:wrap; gap:8px; margin-top:26px;}
+.jump a{font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--ink); background:var(--surface); border:1px solid var(--line); padding:6px 12px; border-radius:999px;}
+.jump a:hover{border-color:var(--accent); color:var(--accent)}
+
+section{padding-top:60px; scroll-margin-top:16px;}
+.sec-head{display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:6px;}
+.sec-head .eyebrow{white-space:nowrap}
+
+/* selos */
+.pill{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px; padding:2px 10px; border-radius:999px; white-space:nowrap; font-weight:600;}
+.pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor;}
+.pill.ok{color:var(--ok); background:var(--ok-soft)} .pill.warn{color:var(--warn); background:var(--warn-soft)}
+.pill.crit{color:var(--crit); background:var(--crit-soft)} .pill.paused{color:var(--paused); background:var(--paused-soft)}
+.pill.novo{color:var(--novo); background:var(--novo-soft)}
+.cat{display:inline-flex; align-items:center; gap:7px; font-weight:500; white-space:nowrap;}
+.cat::before{content:""; width:9px; height:9px; border-radius:2px; background:var(--c);}
+
+/* exemplo de chamado com os dois selos */
+.ticket{background:var(--board); color:var(--board-ink); border:1px solid var(--board-line); border-radius:10px; padding:16px 18px; margin:22px 0; font-size:14.5px;}
+.ticket .top{display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 16px; font-family:var(--mono); font-size:11.5px; color:var(--board-dim); letter-spacing:.06em;}
+.ticket .subj{font-family:var(--cond); font-size:20px; font-weight:600; margin:6px 0 12px;}
+.ticket .line{display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px 0; border-top:1px solid var(--board-line);}
+.ticket .line .who{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--board-dim); width:72px;}
+.ticket .line .d{font-family:var(--mono); font-size:12.5px; color:var(--board-dim);}
+.ticket .pill.ok{background:#173226; color:#5cc28a} .ticket .pill.crit{background:#3a1c22; color:#ec7784}
+.ticket .pill.warn{background:#3a2d17; color:#f2a93b} .ticket .pill.paused{background:#222b35; color:#8b96a3}
+
+/* comparação */
+.vs{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:22px 0;}
+@media (max-width:680px){ .vs{grid-template-columns:1fr} }
+.vs > div{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:16px 18px;}
+.vs h4{margin:0; font-family:var(--cond); font-size:20px; font-weight:600;}
+.vs .q{font-style:italic; color:var(--dim); margin:4px 0 12px; font-size:15px;}
+.vs dl{margin:0; display:grid; gap:10px;}
+.vs dt{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);}
+.vs dd{margin:2px 0 0; font-size:15px;}
+
+/* tabelas */
+.table{overflow-x:auto; margin:18px 0; border:1px solid var(--line); border-radius:8px; background:var(--surface);}
+table{border-collapse:collapse; width:100%; font-size:15px;}
+th, td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top;}
+tr:last-child td{border-bottom:0}
+th{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); font-weight:600; background:var(--surface-2); white-space:nowrap;}
+td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap;}
+.matrix td.y, .matrix td.n{text-align:center; font-family:var(--mono); font-weight:600;}
+.matrix td.y{color:var(--ok)} .matrix td.n{color:var(--dim); opacity:.5}
+.matrix th.c{text-align:center}
+
+/* ciclo de vida do chamado */
+.life{display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); margin:22px 0; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--surface); min-width:640px;}
+.life-wrap{overflow-x:auto}
+.life > div{padding:14px 14px 16px; border-right:1px solid var(--line); position:relative;}
+.life > div:last-child{border-right:0}
+.life .band{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; padding:3px 8px; border-radius:4px; display:inline-block; font-weight:600;}
+.life .h{font-family:var(--cond); font-size:18px; font-weight:600; margin:8px 0 4px;}
+.life p{margin:0; font-size:13.5px; color:var(--dim); line-height:1.5}
+.b-fora{background:var(--novo-soft); color:var(--novo)} .b-aberto{background:var(--warn-soft); color:var(--warn)}
+.b-pausa{background:var(--paused-soft); color:var(--paused)} .b-fim{background:var(--ok-soft); color:var(--ok)}
+.life .groups{display:contents}
+
+/* grupos de tipo de filtro */
+.types{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:22px 0;}
+@media (max-width:760px){ .types{grid-template-columns:1fr} }
+.types > div{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:16px 18px;}
+.types .ico{font-family:var(--mono); font-size:12px; color:var(--accent); font-weight:600; letter-spacing:.08em; text-transform:uppercase;}
+.types h4{margin:6px 0 8px; font-family:var(--cond); font-size:19px; font-weight:600;}
+.types ul{margin:0; padding-left:18px; font-size:14.5px}
+.types p{font-size:14px; color:var(--dim); margin:10px 0 0}
+
+.callout{border:1px solid var(--line); border-left:4px solid var(--accent); background:var(--surface); border-radius:6px; padding:12px 16px; margin:20px 0; font-size:15.5px;}
+.callout.blue{border-left-color:var(--novo)}
+.callout p{margin:4px 0}
+.callout .t{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); font-weight:600;}
+.callout.blue .t{color:var(--novo)}
+
+/* como faço */
+.howto{display:grid; gap:10px; margin:20px 0;}
+.howto > div{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:6px 22px; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:14px 18px;}
+@media (max-width:680px){ .howto > div{grid-template-columns:1fr} }
+.howto .want{font-family:var(--cond); font-size:18px; font-weight:600; line-height:1.3}
+.howto ol{margin:0; padding-left:20px; font-size:15px}
+.howto li{margin:2px 0}
+
+footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--line); font-family:var(--mono); font-size:12px; color:var(--dim); display:flex; flex-wrap:wrap; gap:8px 24px; justify-content:space-between;}
+@media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth} }
+</style>
+
+</head>
+<body>
+<div class="page">
+<header>
+  <div class="eyebrow">Gestão à Vista 360 · Guia do usuário</div>
+  <h1>Guia do Usuário do Gestão à Vista</h1>
+  <p class="lede">Como ler os prazos, entender os status dos chamados e usar os filtros para encontrar exatamente o que você precisa.</p>
+  <nav class="jump" aria-label="Ir para">
+    <a href="#status">Abertos e pendentes</a>
+    <a href="#sla">SLA Política × GLPI</a>
+    <a href="#filtros">Tipos de filtro</a>
+    <a href="#categoria">Filtro de categoria</a>
+    <a href="#tecnico">Filtro de técnico</a>
+    <a href="#combinar">Combinando filtros</a>
+    <a href="#comofaco">Como faço para…</a>
+  </nav>
+</header>
+
+<!-- ================= STATUS ================= -->
+<section id="status">
+  <div class="sec-head"><h2>Chamados abertos e pendentes</h2></div>
+  <p>Todo chamado passa por uma sequência de status no GLPI. O quadro agrupa esses status em três situações: <b>aberto</b> (alguém precisa agir), <b>pausado</b> (aguardando o solicitante) e <b>encerrado</b>.</p>
+
+  <div class="life-wrap"><div class="life">
+    <div><span class="band b-fora">Fora do quadro</span><div class="h">Novo</div><p>Acabou de ser aberto e ninguém começou a atender. Ainda não aparece no quadro.</p></div>
+    <div><span class="band b-aberto">Aberto</span><div class="h">Em atendimento</div><p>Um técnico está trabalhando nele. Inclui “atribuído” e “planejado”.</p></div>
+    <div><span class="band b-pausa">Pausado</span><div class="h">Pendente</div><p>Aguardando uma resposta ou informação do solicitante.</p></div>
+    <div><span class="band b-fim">Encerrado</span><div class="h">Solucionado</div><p>O técnico concluiu o atendimento.</p></div>
+    <div><span class="band b-fim">Encerrado</span><div class="h">Fechado</div><p>Concluído e finalizado no GLPI.</p></div>
+  </div></div>
+
+  <h3>O que conta como “aberto”</h3>
+  <p>Um chamado está <b>aberto</b> enquanto está <b>Em atendimento</b>. É o que o time ainda precisa resolver, e é o que conta no prazo. O indicador “Em atendimento” no topo soma os dois tipos, atribuído e planejado.</p>
+
+  <h3>Como funciona o Pendente</h3>
+  <ul>
+    <li>Pendente significa que a <b>bola está com o solicitante</b>: o técnico pediu uma informação, um documento ou uma aprovação e está esperando.</li>
+    <li>No <b>SLA Política</b>, o chamado pendente fica com o selo <span class="pill paused">Pausado</span>. Ele não aparece como vencido enquanto espera.</li>
+    <li>A pausa <b>não devolve tempo</b>. Quando o chamado volta para Em atendimento, o prazo da Política continua contado <b>desde a abertura</b>, incluindo os dias em que ficou pendente. Um chamado que ficou muito tempo pendente pode voltar já vencido.</li>
+    <li>No <b>SLA GLPI</b>, o quadro não pausa nada: mostra a data de prazo que o GLPI informar. Se o GLPI adiar o prazo por causa do tempo pendente, o quadro mostra a data já adiada.</li>
+  </ul>
+
+  <h3>Chamados sem técnico</h3>
+  <p>O indicador <b>Sem técnico atribuído</b> conta os chamados <b>em atendimento ou pendentes</b> que ainda não têm um técnico responsável. Chamados encerrados sem técnico não entram nessa conta, porque já não precisam de ninguém. Na lista, eles aparecem com a etiqueta “Sem técnico” e uma <b>sugestão</b> de quem costuma atender aquela unidade.</p>
+
+  <div class="callout blue">
+    <div class="t">Por que o status Novo não aparece?</div>
+    <p>Hoje o quadro mostra só chamados que já entraram em atendimento. Um chamado recém-aberto passa a aparecer quando um técnico começa a atendê-lo e o status muda para Em atendimento.</p>
+  </div>
+</section>
+
+<!-- ================= SLA ================= -->
+<section id="sla">
+  <div class="sec-head"><h2>SLA Política × SLA GLPI</h2></div>
+  <p>Cada chamado mostra <b>dois prazos</b>, lado a lado. Eles respondem a perguntas diferentes, por isso podem discordar.</p>
+
+  <div class="vs">
+    <div>
+      <h4>SLA — Política</h4>
+      <p class="q">“O setor cumpriu a própria meta de Cotação + Aprovação?”</p>
+      <dl>
+        <div><dt>De onde vem</dt><dd>Meta interna do setor, igual para todos os chamados de mesma prioridade.</dd></div>
+        <div><dt>Quando começa</dt><dd>Na abertura do chamado.</dd></div>
+        <div><dt>Fica amarelo</dt><dd>Quando resta 20% ou menos do prazo.</dd></div>
+        <div><dt>Pausa</dt><dd>Enquanto o chamado está Pendente.</dd></div>
+        <div><dt>Serve como filtro</dt><dd>Sim. Clique na faixa “SLA — Política”.</dd></div>
+      </dl>
+    </div>
+    <div>
+      <h4>SLA — GLPI</h4>
+      <p class="q">“O chamado cumpriu o prazo registrado no sistema?”</p>
+      <dl>
+        <div><dt>De onde vem</dt><dd>Campo “Tempo para solução” do próprio GLPI.</dd></div>
+        <div><dt>Quando começa</dt><dd>O GLPI calcula conforme a regra cadastrada nele.</dd></div>
+        <div><dt>Fica amarelo</dt><dd>Quando restam 48 horas ou menos.</dd></div>
+        <div><dt>Pausa</dt><dd>Quando o GLPI não definiu prazo para o chamado.</dd></div>
+        <div><dt>Serve como filtro</dt><dd>Não, é só informativo.</dd></div>
+      </dl>
+    </div>
+  </div>
+
+  <h3>Prazos da Política por prioridade</h3>
+  <div class="table"><table>
+    <thead><tr><th>Prioridade</th><th>Cotação</th><th>Aprovação</th><th>Prazo total</th></tr></thead>
+    <tbody>
+      <tr><td>Crítica · Muito alta</td><td class="num">12 h</td><td class="num">12 h</td><td class="num">24 h</td></tr>
+      <tr><td>Alta</td><td class="num">1,5 dia útil</td><td class="num">12 h</td><td class="num">≈ 2 dias</td></tr>
+      <tr><td>Média</td><td class="num">2 dias úteis</td><td class="num">1 dia útil</td><td class="num">3 dias úteis</td></tr>
+      <tr><td>Baixa · Muito baixa</td><td class="num">4 dias úteis</td><td class="num">1 dia útil</td><td class="num">5 dias úteis</td></tr>
+    </tbody>
+  </table></div>
+  <p>Dias úteis pulam sábado e domingo, mas não feriados. As horas são corridas, de relógio, não horário comercial.</p>
+
+  <h3>As quatro cores</h3>
+  <div class="table"><table>
+    <thead><tr><th>Selo</th><th>Chamado aberto</th><th>Chamado encerrado</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill ok">No prazo</span></td><td>O prazo não chegou e ainda há folga.</td><td>Foi concluído antes do prazo.</td></tr>
+      <tr><td><span class="pill warn">Quase vencendo</span></td><td>O prazo está chegando: 20% final na Política, últimas 48 h no GLPI.</td><td>—</td></tr>
+      <tr><td><span class="pill crit">Vencido</span></td><td>O prazo já passou.</td><td>Foi concluído depois do prazo.</td></tr>
+      <tr><td><span class="pill paused">Pausado</span></td><td>Política: está Pendente. GLPI: sem prazo definido no sistema.</td><td>GLPI: sem prazo definido no sistema.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Exemplo: os dois prazos discordando</h3>
+  <p>Um chamado de prioridade Média, aberto na segunda às 10h e ainda em atendimento na sexta:</p>
+  <div class="ticket" role="img" aria-label="Exemplo de chamado com SLA Política vencido e SLA GLPI no prazo">
+    <div class="top"><span>CHAMADO DE EXEMPLO · COMPRAS</span><span>PRIORIDADE MÉDIA · EM ATENDIMENTO</span></div>
+    <div class="subj">Material de limpeza</div>
+    <div class="line"><span class="who">Política</span><span class="pill crit">Vencido</span><span class="d">esperado: quinta 10:00</span></div>
+    <div class="line"><span class="who">GLPI</span><span class="pill ok">No prazo</span><span class="d">prazo do sistema: próxima terça 16:00</span></div>
+  </div>
+  <p>A meta interna de 3 dias úteis terminou na quinta, então a <b>Política</b> mostra vencido. O GLPI tem uma regra de prazo mais longa para esse tipo de chamado, então o <b>GLPI</b> ainda mostra no prazo. Leia assim: <i>está dentro do prazo formal, mas atrasado em relação à meta do setor</i>. <span class="eyebrow">(Exemplo ilustrativo.)</span></p>
+</section>
+
+<!-- ================= FILTROS ================= -->
+<section id="filtros">
+  <div class="sec-head"><h2>Tipos de filtro</h2></div>
+  <p>Existem três formas de filtrar o quadro. Os filtros de clique ligam no primeiro clique e desligam no segundo clique no mesmo lugar. Todo filtro ativo aparece como uma etiqueta na barra <b>Filtrando por</b>, acima das listas.</p>
+
+  <div class="types">
+    <div>
+      <div class="ico">Menus</div>
+      <h4>Seletores</h4>
+      <ul>
+        <li><b>Ver o mês</b></li>
+        <li><b>Técnico</b></li>
+        <li><b>Registros por página</b></li>
+        <li><b>Atualizar a cada</b></li>
+      </ul>
+      <p>Escolha uma opção na lista. Ficam logo abaixo das faixas de SLA.</p>
+    </div>
+    <div>
+      <div class="ico">Clique</div>
+      <h4>Indicadores</h4>
+      <ul>
+        <li><b>Status:</b> Total, Em atendimento, Pendente, Solucionado, Fechado</li>
+        <li><b>Prazo:</b> faixa SLA — Política</li>
+        <li><b>Sem técnico atribuído</b></li>
+      </ul>
+      <p>Clique no número do topo para ver só aqueles chamados.</p>
+    </div>
+    <div>
+      <div class="ico">Clique</div>
+      <h4>Cards</h4>
+      <ul>
+        <li><b>Categoria:</b> Compras, Frotas, Viagens, VExpenses, Manutenção</li>
+        <li><b>Unidade:</b> na aba Por unidade</li>
+      </ul>
+      <p>Clique no card para ver só aquela categoria ou unidade.</p>
+    </div>
+  </div>
+
+  <h3>Onde cada filtro age</h3>
+  <p>Nem todo filtro muda a tela inteira. Os <b>números do topo</b> mudam só com o filtro de <b>mês</b>. Os demais filtros refinam as <b>listas de chamados</b>.</p>
+  <div class="table matrix"><table>
+    <thead><tr><th>Filtro</th><th class="c">Números do topo e cards</th><th class="c">Aba Por categoria</th><th class="c">Aba Por unidade</th><th class="c">Aba Fila por técnico</th></tr></thead>
+    <tbody>
+      <tr><td><b>Mês</b></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td><b>Técnico</b></td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td><b>Status</b></td><td class="n">—</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td></tr>
+      <tr><td><b>SLA Política</b></td><td class="n">—</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td></tr>
+      <tr><td><b>Sem técnico</b></td><td class="n">—</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td></tr>
+      <tr><td><b>Categoria</b></td><td class="n">—</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td></tr>
+      <tr><td><b>Unidade</b></td><td class="n">—</td><td class="n">—</td><td class="y">✓</td><td class="n">—</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Filtro de mês</h3>
+  <p>Escolher um mês mostra os chamados que estiveram <b>ativos</b> naquele mês, e não só os abertos nele:</p>
+  <ul>
+    <li>chamados <b>em atendimento ou pendentes</b> hoje, abertos até o fim do mês escolhido;</li>
+    <li>chamados <b>encerrados</b> que foram abertos até o fim do mês e concluídos a partir do primeiro dia dele.</li>
+  </ul>
+  <p>Exemplo: um chamado aberto em julho e fechado em setembro aparece em <b>julho</b>, <b>agosto</b> e <b>setembro</b>, porque ficou aberto nos três meses. Ao lado do seletor, o quadro mostra quantos chamados foram <b>abertos</b> no mês escolhido.</p>
+
+  <h3>Opções de exibição</h3>
+  <ul>
+    <li><b>Registros por página:</b> quantas linhas cada tabela mostra (5, 10, 50 ou 100). Use “Anterior” e “Próximo” para navegar.</li>
+    <li><b>Ordenar:</b> clique no título de uma coluna da tabela. Clique de novo para inverter.</li>
+    <li><b>Atualizar a cada:</b> de quanto em quanto tempo o quadro busca dados novos (5 min, 10 min, 30 min ou 1 hora).</li>
+  </ul>
+</section>
+
+<!-- ================= CATEGORIA ================= -->
+<section id="categoria">
+  <div class="sec-head"><h2>Filtro de categoria</h2></div>
+  <p>Cada chamado pertence a <b>uma</b> das cinco categorias. A categoria vem do <b>grupo que atende</b> o chamado, escolhido no formulário de abertura:</p>
+  <div class="table"><table>
+    <thead><tr><th>Categoria</th><th>Grupo que atende</th><th>Exemplos</th></tr></thead>
+    <tbody>
+      <tr><td><span class="cat" style="--c:var(--compras)">Compras</span></td><td>CSC › Compras (e RAC)</td><td>Material de escritório, cadastro de produto, uniforme, EPI, móveis</td></tr>
+      <tr><td><span class="cat" style="--c:var(--frotas)">Frotas</span></td><td>CSC › Frotas</td><td>Rota, reserva de veículo, combustível, seguro</td></tr>
+      <tr><td><span class="cat" style="--c:var(--viagens)">Viagens Corporativas</span></td><td>CSC › Viagens</td><td>Pacote de viagem, passagem, remarcação</td></tr>
+      <tr><td><span class="cat" style="--c:var(--vexpenses)">VExpenses</span></td><td>Financeiro › VExpense</td><td>Criação de usuário VExpenses</td></tr>
+      <tr><td><span class="cat" style="--c:var(--manutencao)">Manutenção</span></td><td>Manutenção</td><td>Problema elétrico, hidráulico, estrutural, equipamentos</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Como usar</h3>
+  <ol>
+    <li>Clique no <b>card da categoria</b>, logo abaixo das faixas de SLA.</li>
+    <li>A aba <b>Por categoria</b> passa a mostrar só a tabela daquela categoria, e o card fica destacado.</li>
+    <li>Clique no mesmo card de novo, ou em <b>Limpar filtro ✕</b>, para voltar a ver todas.</li>
+  </ol>
+  <p>Cada card também funciona como um resumo: o total da categoria, uma barra com a proporção de cada status e, para cada status, quantos chamados estão <span class="pill ok">No prazo</span> <span class="pill warn">Quase vencendo</span> <span class="pill crit">Vencido</span> <span class="pill paused">Pausado</span>, na Política e no GLPI. Esse resumo muda com o filtro de mês, mas não com os outros filtros.</p>
+</section>
+
+<!-- ================= TÉCNICO ================= -->
+<section id="tecnico">
+  <div class="sec-head"><h2>Filtro de técnico</h2></div>
+  <p>O seletor <b>Técnico</b> lista todas as pessoas que aparecem como responsáveis nos chamados do período.</p>
+  <ul>
+    <li><b>Escolhendo um técnico:</b> as listas das três abas passam a mostrar só os chamados em que ele é responsável. Na aba <b>Fila por técnico</b>, fica só a coluna dele.</li>
+    <li><b>Chamados com dois técnicos</b> aparecem para os dois. Na Fila por técnico, o mesmo chamado aparece na coluna de cada um. Por isso, a soma das filas pode ser maior que o total de chamados.</li>
+    <li><b>Nomes iguais:</b> se duas pessoas tiverem o mesmo nome no GLPI, o seletor mostra o número de identificação ao lado de cada uma, para não misturar.</li>
+    <li>Os <b>números do topo não mudam</b> com esse filtro. Eles continuam mostrando o setor inteiro.</li>
+  </ul>
+
+  <h3>“Sem técnico atribuído”: duas formas, dois resultados</h3>
+  <div class="table"><table>
+    <thead><tr><th>Onde</th><th>O que mostra</th></tr></thead>
+    <tbody>
+      <tr><td><b>Card</b> “Sem técnico atribuído” (vermelho, no topo)</td><td>Só os chamados <b>em atendimento ou pendentes</b> sem técnico, ou seja, os que precisam de alguém agora.</td></tr>
+      <tr><td><b>Opção</b> “— Sem técnico atribuído —” no seletor Técnico</td><td><b>Todos</b> os chamados sem técnico, inclusive os já encerrados.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Para cobrar atribuição, use o <b>card</b>. Para levantar histórico, use a <b>opção do seletor</b>.</p>
+
+  <h3>Aba Fila por técnico</h3>
+  <ul>
+    <li>Uma coluna por técnico, da fila maior para a menor.</li>
+    <li>No topo da coluna: total na fila, quantos são de prioridade alta e há quantos dias está aberto o chamado mais antigo.</li>
+    <li>A fila é ordenada por <b>prioridade</b> (Alta, Média, Baixa) e, dentro de cada prioridade, pelo chamado <b>aberto há mais tempo</b>.</li>
+    <li>O selo “aberto há N dias” fica <span class="pill warn">âmbar</span> a partir de 5 dias e <span class="pill crit">vermelho</span> a partir de 10.</li>
+    <li>No fim da aba, o bloco <b>Sem técnico — precisa de atribuição</b> agrupa os chamados sem dono por unidade e sugere quem costuma atender cada uma.</li>
+  </ul>
+</section>
+
+<!-- ================= COMBINAR ================= -->
+<section id="combinar">
+  <div class="sec-head"><h2>Combinando filtros</h2></div>
+  <p>Os filtros <b>se somam</b>: cada um restringe o resultado do anterior. Com <b>Compras</b> + <b>Vencido</b> + técnico <b>Maycon</b>, a lista mostra só os chamados de Compras, vencidos na Política, que estão com o Maycon.</p>
+  <ul>
+    <li>A barra <b>Filtrando por</b> mostra todos os filtros ativos.</li>
+    <li><b>Limpar filtro ✕</b> desliga todos de uma vez, <b>menos o mês</b>. Para voltar a ver todos os meses, escolha “Todos os meses” no seletor.</li>
+    <li>Se a combinação não tiver nenhum chamado, a lista mostra “Nenhum chamado encontrado com esse filtro”.</li>
+  </ul>
+</section>
+
+<!-- ================= COMO FAÇO ================= -->
+<section id="comofaco">
+  <div class="sec-head"><h2>Como faço para…</h2></div>
+  <div class="howto">
+    <div><div class="want">…ver os chamados de Compras que estão vencidos?</div>
+      <ol><li>Clique no card <span class="cat" style="--c:var(--compras)">Compras</span>.</li><li>Clique em <span class="pill crit">Vencido</span> na faixa SLA — Política.</li></ol></div>
+    <div><div class="want">…ver tudo o que está com um técnico?</div>
+      <ol><li>Escolha o nome no seletor <b>Técnico</b>.</li><li>Abra a aba <b>Fila por técnico</b> para ver a fila dele em ordem de prioridade.</li></ol></div>
+    <div><div class="want">…descobrir quais chamados estão sem responsável?</div>
+      <ol><li>Clique no card vermelho <b>Sem técnico atribuído</b>.</li><li>Ou abra a aba Fila por técnico e veja o bloco final, com sugestão de quem costuma atender.</li></ol></div>
+    <div><div class="want">…saber o que estava em andamento em agosto?</div>
+      <ol><li>Escolha <b>Agosto</b> no seletor Ver o mês.</li><li>Clique em <b>Em atendimento</b> ou <b>Pendente</b> no topo, se quiser só esses.</li></ol></div>
+    <div><div class="want">…ver os chamados de uma unidade, como a NEO RN?</div>
+      <ol><li>Abra a aba <b>Por unidade</b>.</li><li>Clique no card <b>NEO RN</b>. Os chamados aparecem separados por categoria.</li></ol></div>
+    <div><div class="want">…ver os detalhes de um chamado?</div>
+      <ol><li>Clique na linha do chamado, em qualquer aba.</li><li>Feche com o ✕, clicando fora da janela ou com a tecla Esc.</li></ol></div>
+  </div>
+</section>
+
+<footer>
+  <span><a href="index.html">← Voltar ao painel</a> · Gestão à Vista 360 · Guia do usuário</span>
+  <span>Atualizado em 23/09/2026</span>
+</footer>
+</div>
+
+</body>
+</html>
